@@ -13,26 +13,57 @@ function is_logged_in(): bool
 }
 
 /**
- * Protect a page from unauthenticated users.
+ * Get the currently logged-in user.
+ */
+function current_user(): array
+{
+    return $_SESSION['user'] ?? [];
+}
+
+/**
+ * Get the current user's role.
+ */
+function current_role(): string
+{
+    return $_SESSION['user']['role'] ?? '';
+}
+
+/**
+ * Require any authenticated user.
  */
 function require_login(): void
 {
     if (!is_logged_in()) {
-        header("Location: login.php");
+        header("Location: ../login.php");
         exit;
     }
 }
 
 /**
- * Get the currently logged-in user.
+ * Redirect a logged-in user to the correct dashboard.
  */
-function current_user(): array
+function redirect_by_role(): void
 {
-    return $_SESSION['user'] ?? [
-        'name' => 'Property Manager',
-        'email' => 'admin@example.com',
-        'role' => 'Administrator'
-    ];
+    if (!is_logged_in()) {
+        header("Location: login.php");
+        exit;
+    }
+
+    if (current_role() === 'Administrator') {
+        header("Location: admin/dashboard.php");
+        exit;
+    }
+
+    if (current_role() === 'Customer') {
+        header("Location: customer/dashboard.php");
+        exit;
+    }
+
+    // Unknown role
+    logout_user();
+
+    header("Location: login.php");
+    exit;
 }
 
 /**

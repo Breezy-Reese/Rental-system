@@ -1,14 +1,12 @@
 <?php
 
-require_once "../includes/auth.php";
+require_once __DIR__ . "/../includes/auth.php";
 
 if (is_logged_in()) {
-    header("Location: dashboard.php");
-    exit;
+    redirect_by_role();
 }
 
 $error = '';
-$success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -16,228 +14,229 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
 
     if ($email === '' || $password === '') {
+
         $error = 'Please enter your email and password.';
-    } elseif (
-        $email === 'admin@example.com' &&
-        $password === 'admin123'
-    ) {
-
-        session_regenerate_id(true);
-
-        $_SESSION['user'] = [
-            'name' => 'Property Manager',
-            'email' => $email,
-            'role' => 'Administrator'
-        ];
-
-        header("Location: dashboard.php");
-        exit;
 
     } else {
+
+        /*
+        |--------------------------------------------------------------------------
+        | DEMO ADMIN
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $email === 'admin@example.com' &&
+            $password === 'admin123'
+        ) {
+
+            session_regenerate_id(true);
+
+            $_SESSION['user'] = [
+                'id' => 'ADM-001',
+                'name' => 'Property Manager',
+                'email' => $email,
+                'role' => 'Administrator'
+            ];
+
+            header("Location: admin/dashboard.php");
+            exit;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | DEMO CUSTOMER
+        |--------------------------------------------------------------------------
+        */
+
+        if (
+            $email === 'customer@example.com' &&
+            $password === 'customer123'
+        ) {
+
+            session_regenerate_id(true);
+
+            $_SESSION['user'] = [
+                'id' => 'CUS-001',
+                'name' => 'John Mwangi',
+                'email' => $email,
+                'role' => 'Customer'
+            ];
+
+            header("Location: customer/dashboard.php");
+            exit;
+        }
+
         $error = 'Invalid email or password.';
     }
 }
 
 $pageTitle = "Login";
 
-require_once "../includes/header.php";
+require_once __DIR__ . "/../includes/header.php";
 ?>
 
-<div class="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-8">
+<div class="flex min-h-screen items-center justify-center px-4 py-12">
 
     <div class="w-full max-w-md">
 
         <!-- Logo -->
         <div class="mb-8 text-center">
-            <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-lg">
 
-                <svg
-                    class="h-9 w-9"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M3 12l9-9 9 9M5 10v10h14V10M9 20v-6h6v6"
-                    />
-                </svg>
-
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-600 text-2xl font-bold text-white">
+                P
             </div>
 
             <h1 class="text-2xl font-bold text-slate-900">
-                PropertyPro
+                Welcome to PropertyPro
             </h1>
 
-            <p class="mt-1 text-sm text-slate-500">
-                Rental Management System
+            <p class="mt-2 text-sm text-slate-500">
+                Property Rental Management System
             </p>
+
         </div>
 
-
         <!-- Login Card -->
-        <div class="rounded-2xl bg-white p-8 shadow-xl">
+        <div class="rounded-2xl bg-white p-6 shadow-xl ring-1 ring-slate-200 sm:p-8">
 
-            <div class="mb-6">
-                <h2 class="text-xl font-semibold text-slate-900">
-                    Welcome back
-                </h2>
-
-                <p class="mt-1 text-sm text-slate-500">
-                    Sign in to your property management account.
-                </p>
-            </div>
-
-
-            <!-- Error -->
             <?php if ($error): ?>
 
-                <div class="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     <?= htmlspecialchars($error) ?>
                 </div>
 
             <?php endif; ?>
 
-
-            <!-- Success -->
-            <?php if ($success): ?>
-
-                <div class="mb-5 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                    <?= htmlspecialchars($success) ?>
-                </div>
-
-            <?php endif; ?>
-
-
-            <form method="POST" action="">
+            <form method="POST" action="login.php" class="space-y-5">
 
                 <!-- Email -->
-                <div class="mb-5">
+                <div>
 
                     <label
                         for="email"
-                        class="mb-2 block text-sm font-medium text-slate-700"
-                    >
+                        class="mb-2 block text-sm font-medium text-slate-700">
                         Email Address
                     </label>
 
                     <input
-                        type="email"
                         id="email"
                         name="email"
+                        type="email"
                         value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-                        placeholder="admin@example.com"
-                        autocomplete="email"
+                        placeholder="Enter your email"
                         required
-                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                    >
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
 
                 </div>
-
 
                 <!-- Password -->
-                <div class="mb-5">
-
-                    <div class="mb-2 flex items-center justify-between">
-
-                        <label
-                            for="password"
-                            class="block text-sm font-medium text-slate-700"
-                        >
-                            Password
-                        </label>
-
-                        <a
-                            href="#"
-                            class="text-sm font-medium text-primary-600 hover:text-primary-700"
-                        >
-                            Forgot password?
-                        </a>
-
-                    </div>
-
-                    <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        placeholder="Enter your password"
-                        autocomplete="current-password"
-                        required
-                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                    >
-
-                </div>
-
-
-                <!-- Remember -->
-                <div class="mb-6 flex items-center">
-
-                    <input
-                        type="checkbox"
-                        id="remember"
-                        name="remember"
-                        value="1"
-                        class="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                    >
+                <div>
 
                     <label
-                        for="remember"
-                        class="ml-2 text-sm text-slate-600"
-                    >
-                        Remember me
+                        for="password"
+                        class="mb-2 block text-sm font-medium text-slate-700">
+                        Password
                     </label>
+
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        placeholder="Enter your password"
+                        required
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
 
                 </div>
 
+                <!-- Remember -->
+                <div class="flex items-center justify-between">
 
-                <!-- Login Button -->
+                    <label class="flex items-center gap-2 text-sm text-slate-600">
+
+                        <input
+                            type="checkbox"
+                            name="remember"
+                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+
+                        Remember me
+
+                    </label>
+
+                    <a
+                        href="#"
+                        class="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                        Forgot password?
+                    </a>
+
+                </div>
+
+                <!-- Submit -->
                 <button
                     type="submit"
-                    class="w-full rounded-lg bg-primary-600 px-4 py-3 font-semibold text-white transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                >
+                    class="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
                     Sign In
                 </button>
 
             </form>
 
-
             <!-- Register -->
-            <div class="mt-6 border-t border-slate-200 pt-6 text-center">
+            <div class="mt-6 text-center text-sm text-slate-600">
 
-                <p class="text-sm text-slate-500">
-                    Don't have an account?
+                Don't have an account?
 
-                    <a
-                        href="register.php"
-                        class="font-semibold text-primary-600 hover:text-primary-700"
-                    >
-                        Create account
-                    </a>
-                </p>
+                <a
+                    href="register.php"
+                    class="font-semibold text-indigo-600 hover:text-indigo-700">
+                    Create an account
+                </a>
 
             </div>
 
         </div>
 
+        <!-- Demo accounts -->
+        <div class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
 
-        <!-- Demo credentials -->
-        <div class="mt-5 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <h3 class="mb-3 text-sm font-semibold text-slate-800">
+                Demo Accounts
+            </h3>
 
-            <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                Demo Login
-            </p>
+            <div class="space-y-3 text-xs">
 
-            <p class="mt-2 text-sm text-blue-800">
-                Email:
-                <strong>admin@example.com</strong>
-            </p>
+                <div class="rounded-lg bg-indigo-50 p-3">
 
-            <p class="text-sm text-blue-800">
-                Password:
-                <strong>admin123</strong>
-            </p>
+                    <p class="font-semibold text-indigo-800">
+                        Administrator
+                    </p>
+
+                    <p class="mt-1 text-slate-600">
+                        Email: admin@example.com
+                    </p>
+
+                    <p class="text-slate-600">
+                        Password: admin123
+                    </p>
+
+                </div>
+
+                <div class="rounded-lg bg-slate-50 p-3">
+
+                    <p class="font-semibold text-slate-800">
+                        Customer
+                    </p>
+
+                    <p class="mt-1 text-slate-600">
+                        Email: customer@example.com
+                    </p>
+
+                    <p class="text-slate-600">
+                        Password: customer123
+                    </p>
+
+                </div>
+
+            </div>
 
         </div>
 
@@ -246,5 +245,5 @@ require_once "../includes/header.php";
 </div>
 
 <?php
-require_once "../includes/footer.php";
+require_once __DIR__ . "/../includes/footer.php";
 ?>

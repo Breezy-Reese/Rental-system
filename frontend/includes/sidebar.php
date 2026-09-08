@@ -1,281 +1,819 @@
+```php
 <?php
-$currentPage = basename($_SERVER['PHP_SELF']);
+
+/*
+|--------------------------------------------------------------------------
+| PropertyPro - Shared Sidebar
+|--------------------------------------------------------------------------
+| Used by:
+| - Administrator
+| - Customer
+|--------------------------------------------------------------------------
+*/
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Load authentication and notification helpers
+|--------------------------------------------------------------------------
+*/
+
+$authFile = __DIR__ . "/auth.php";
+
+if (file_exists($authFile)) {
+    require_once $authFile;
+}
+
+$notificationsFile = __DIR__ . "/notifications.php";
+
+if (file_exists($notificationsFile)) {
+    require_once $notificationsFile;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Current page
+|--------------------------------------------------------------------------
+*/
+
+$currentPage = basename($_SERVER['PHP_SELF'] ?? '');
+
+$scriptPath = str_replace(
+    '\\',
+    '/',
+    $_SERVER['SCRIPT_NAME'] ?? ''
+);
+
+/*
+|--------------------------------------------------------------------------
+| Determine current area
+|--------------------------------------------------------------------------
+*/
+
+$isAdminArea = str_contains($scriptPath, '/admin/');
+$isCustomerArea = str_contains($scriptPath, '/customer/');
+
+/*
+|--------------------------------------------------------------------------
+| Current user
+|--------------------------------------------------------------------------
+*/
+
+$user = function_exists('current_user')
+    ? current_user()
+    : [];
+
+$userName = $user['name'] ?? 'User';
+$userEmail = $user['email'] ?? '';
+$userRole = $user['role'] ?? '';
+
+/*
+|--------------------------------------------------------------------------
+| Relative paths
+|--------------------------------------------------------------------------
+*/
+
+if ($isAdminArea || $isCustomerArea) {
+    $rootUrl = '../';
+} else {
+    $rootUrl = '';
+}
+
+/*
+|--------------------------------------------------------------------------
+| User initials
+|--------------------------------------------------------------------------
+*/
+
+$nameParts = preg_split(
+    '/\s+/',
+    trim($userName)
+);
+
+$initials = '';
+
+foreach ($nameParts as $part) {
+    if ($part !== '') {
+        $initials .= strtoupper(substr($part, 0, 1));
+    }
+}
+
+$initials = substr($initials, 0, 2);
+
+if ($initials === '') {
+    $initials = 'US';
+}
+
+/*
+|--------------------------------------------------------------------------
+| Active navigation helper
+|--------------------------------------------------------------------------
+*/
+
+if (!function_exists('nav_active')) {
+    function nav_active(
+        string $page,
+        string $currentPage
+    ): string {
+        if ($page === $currentPage) {
+            return 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20';
+        }
+
+        return 'text-slate-300 hover:bg-slate-800 hover:text-white';
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Customer notification count
+|--------------------------------------------------------------------------
+*/
+
+$unreadNotificationCount = 0;
+
+if (
+    $isCustomerArea &&
+    !empty($_SESSION['notifications']) &&
+    is_array($_SESSION['notifications'])
+) {
+    foreach ($_SESSION['notifications'] as $notification) {
+
+        if (
+            is_array($notification) &&
+            empty($notification['read'])
+        ) {
+            $unreadNotificationCount++;
+        }
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Admin notification count
+|--------------------------------------------------------------------------
+*/
+
+$adminUnreadNotificationCount = 0;
+
+if (
+    $isAdminArea &&
+    function_exists('get_admin_unread_count')
+) {
+    $adminUnreadNotificationCount = get_admin_unread_count();
+}
+
 ?>
 
-<!-- Mobile Overlay -->
+<!-- ================================================================
+     MOBILE OVERLAY
+================================================================ -->
+
 <div
     id="sidebarOverlay"
-    class="fixed inset-0 z-40 hidden bg-black/50 lg:hidden">
-</div>
+    class="fixed inset-0 z-40 hidden bg-black/50 lg:hidden"
+></div>
 
 
-<!-- Sidebar -->
+<!-- ================================================================
+     SIDEBAR
+================================================================ -->
+
 <aside
     id="sidebar"
-    class="fixed inset-y-0 left-0 z-50 w-64
-           -translate-x-full bg-slate-950 text-white
-           transition-transform duration-300 ease-in-out">
+    class="fixed inset-y-0 left-0 z-50 flex w-64
+           -translate-x-full flex-col
+           bg-slate-950 text-white
+           transition-transform duration-300
+           lg:translate-x-0"
+>
 
-    <div class="flex h-full flex-col">
+    <!-- ============================================================
+         LOGO
+    ============================================================= -->
 
-        <!-- Logo / Header -->
-        <div class="flex h-20 items-center justify-between
-                    border-b border-slate-800 px-6">
+    <div
+        class="flex h-16 shrink-0 items-center justify-between
+               border-b border-slate-800 px-5"
+    >
 
-            <div class="flex items-center gap-3">
+        <a
+            href="<?= $isAdminArea || $isCustomerArea
+                ? 'dashboard.php'
+                : 'index.php' ?>"
+            class="flex min-w-0 items-center gap-3"
+        >
 
-                <div class="flex h-10 w-10 items-center justify-center
-                            rounded-xl bg-primary-600">
+            <!-- Logo -->
 
-                    <svg
-                        class="h-6 w-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24">
-
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M3 12l9-9 9 9M5 10v10h14V10M9 20v-6h6v6"/>
-                    </svg>
-
-                </div>
-
-                <div>
-                    <h1 class="text-lg font-bold">
-                        PropertyPro
-                    </h1>
-
-                    <p class="text-xs text-slate-400">
-                        Rental Management
-                    </p>
-                </div>
-
+            <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center
+                       rounded-lg bg-indigo-600 font-bold text-white"
+            >
+                P
             </div>
 
+            <!-- Brand -->
 
-            <!-- Close Sidebar Button -->
-            <button
-                id="closeSidebar"
-                type="button"
-                aria-label="Close sidebar">
+            <div class="min-w-0">
 
-                <svg
-                    class="h-6 w-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24">
-
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"/>
-
-                </svg>
-
-            </button>
-
-        </div>
-
-
-        <!-- Navigation -->
-        <nav class="flex-1 overflow-y-auto px-4 py-6">
-
-            <p class="mb-3 px-3 text-xs font-semibold uppercase
-                      tracking-wider text-slate-500">
-                Overview
-            </p>
-
-
-            <!-- Dashboard -->
-            <a
-                href="dashboard.php"
-                class="<?= $currentPage === 'dashboard.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>📊</span>
-                <span>Dashboard</span>
-
-            </a>
-
-
-            <!-- Properties -->
-            <a
-                href="properties.php"
-                class="<?= $currentPage === 'properties.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>🏢</span>
-                <span>Properties</span>
-
-            </a>
-
-
-            <!-- Units -->
-            <a
-                href="units.php"
-                class="<?= $currentPage === 'units.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>🚪</span>
-                <span>Units</span>
-
-            </a>
-
-
-            <!-- Tenants -->
-            <a
-                href="tenants.php"
-                class="<?= $currentPage === 'tenants.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>👥</span>
-                <span>Tenants</span>
-
-            </a>
-
-
-            <!-- Finance -->
-            <p class="mb-3 mt-8 px-3 text-xs font-semibold uppercase
-                      tracking-wider text-slate-500">
-                Finance
-            </p>
-
-
-            <!-- Payments -->
-            <a
-                href="payments.php"
-                class="<?= $currentPage === 'payments.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>💰</span>
-                <span>Payments</span>
-
-            </a>
-
-
-            <!-- Leases -->
-            <a
-                href="leases.php"
-                class="<?= $currentPage === 'leases.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>📄</span>
-                <span>Leases</span>
-
-            </a>
-
-
-            <!-- Expenses -->
-            <a
-                href="expenses.php"
-                class="<?= $currentPage === 'expenses.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>💳</span>
-                <span>Expenses</span>
-
-            </a>
-
-
-            <!-- Operations -->
-            <p class="mb-3 mt-8 px-3 text-xs font-semibold uppercase
-                      tracking-wider text-slate-500">
-                Operations
-            </p>
-
-
-            <!-- Maintenance -->
-            <a
-                href="maintenance.php"
-                class="<?= $currentPage === 'maintenance.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>🔧</span>
-                <span>Maintenance</span>
-
-            </a>
-
-
-            <!-- Reports -->
-            <a
-                href="reports.php"
-                class="<?= $currentPage === 'reports.php'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white' ?>
-                    mb-1 flex items-center gap-3 rounded-lg px-3 py-3 text-sm">
-
-                <span>📈</span>
-                <span>Reports</span>
-
-            </a>
-
-        </nav>
-
-
-        <!-- User -->
-        <div class="border-t border-slate-800 p-4">
-
-            <div class="flex items-center gap-3">
-
-                <div
-                    class="flex h-10 w-10 items-center justify-center
-                           rounded-full bg-primary-600 font-semibold">
-
-                    BM
-
+                <div class="truncate font-bold text-white">
+                    PropertyPro
                 </div>
 
-                <div class="min-w-0 flex-1">
+                <div class="truncate text-xs text-slate-400">
 
-                    <p class="truncate text-sm font-medium">
-                        Property Manager
-                    </p>
-
-                    <p class="truncate text-xs text-slate-400">
-                        Administrator
-                    </p>
+                    <?= $isAdminArea
+                        ? 'Administration'
+                        : ($isCustomerArea
+                            ? 'Customer Portal'
+                            : 'Property Management') ?>
 
                 </div>
 
             </div>
 
+        </a>
 
-            <!-- Logout -->
-            <a
-                href="logout.php"
-                class="mt-4 flex items-center gap-3 rounded-lg
-                       px-3 py-3 text-sm text-slate-300
-                       transition hover:bg-red-500/10 hover:text-red-400">
 
-                <span>🚪</span>
+        <!-- Mobile Close Button -->
 
-                <span>
-                    Logout
-                </span>
+        <button
+            id="closeSidebar"
+            type="button"
+            aria-label="Close sidebar"
+            class="ml-2 shrink-0 text-2xl leading-none
+                   text-slate-400 transition
+                   hover:text-white lg:hidden"
+        >
+            &times;
+        </button>
 
-            </a>
+    </div>
+
+
+    <!-- ============================================================
+         USER INFORMATION
+    ============================================================= -->
+
+    <div
+        class="shrink-0 border-b border-slate-800 px-4 py-4"
+    >
+
+        <div class="flex min-w-0 items-center gap-3">
+
+            <!-- Avatar -->
+
+            <div
+                class="flex h-10 w-10 shrink-0 items-center justify-center
+                       rounded-full bg-indigo-600 font-semibold text-white"
+            >
+                <?= htmlspecialchars(
+                    $initials,
+                    ENT_QUOTES,
+                    'UTF-8'
+                ) ?>
+            </div>
+
+
+            <!-- User Details -->
+
+            <div class="min-w-0 flex-1">
+
+                <p
+                    class="truncate text-sm font-semibold text-white"
+                    title="<?= htmlspecialchars(
+                        $userName,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                >
+                    <?= htmlspecialchars(
+                        $userName,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>
+                </p>
+
+
+                <p
+                    class="truncate text-xs text-slate-400"
+                    title="<?= htmlspecialchars(
+                        $userRole,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                >
+                    <?= htmlspecialchars(
+                        $userRole,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>
+                </p>
+
+            </div>
 
         </div>
 
     </div>
 
+
+    <!-- ============================================================
+         NAVIGATION
+    ============================================================= -->
+
+    <nav
+        class="min-h-0 flex-1 overflow-y-auto px-3 py-5"
+    >
+
+        <?php if ($isAdminArea): ?>
+
+            <!-- ====================================================
+                 ADMIN NAVIGATION
+            ===================================================== -->
+
+            <p
+                class="mb-2 px-3 text-xs font-semibold
+                       uppercase tracking-wider text-slate-500"
+            >
+                Administration
+            </p>
+
+
+            <div class="space-y-1">
+
+                <!-- Dashboard -->
+
+                <a
+                    href="dashboard.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'dashboard.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        📊
+                    </span>
+
+                    <span>
+                        Dashboard
+                    </span>
+                </a>
+
+
+                <!-- Notifications -->
+
+                <a
+                    href="notifications.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'notifications.php',
+                               $currentPage
+                           ) ?>"
+                >
+
+                    <span class="w-6 shrink-0 text-center">
+                        🔔
+                    </span>
+
+                    <span class="min-w-0 flex-1 truncate">
+                        Notifications
+                    </span>
+
+
+                    <?php if ($adminUnreadNotificationCount > 0): ?>
+
+                        <span
+                            class="flex h-5 min-w-5 shrink-0
+                                   items-center justify-center
+                                   rounded-full bg-red-500 px-1.5
+                                   text-[11px] font-bold text-white"
+                        >
+                            <?= $adminUnreadNotificationCount > 99
+                                ? '99+'
+                                : $adminUnreadNotificationCount ?>
+                        </span>
+
+                    <?php endif; ?>
+
+                </a>
+
+
+                <!-- Properties -->
+
+                <a
+                    href="properties.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'properties.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        🏢
+                    </span>
+
+                    <span>
+                        Properties
+                    </span>
+                </a>
+
+
+                <!-- Units -->
+
+                <a
+                    href="units.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'units.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        🚪
+                    </span>
+
+                    <span>
+                        Units
+                    </span>
+                </a>
+
+
+                <!-- Tenants -->
+
+                <a
+                    href="tenants.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'tenants.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        👥
+                    </span>
+
+                    <span>
+                        Tenants
+                    </span>
+                </a>
+
+
+                <!-- Payments -->
+
+                <a
+                    href="payments.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'payments.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        💳
+                    </span>
+
+                    <span>
+                        Payments
+                    </span>
+                </a>
+
+
+                <!-- Leases -->
+
+                <a
+                    href="leases.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'leases.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        📄
+                    </span>
+
+                    <span>
+                        Leases
+                    </span>
+                </a>
+
+
+                <!-- Expenses -->
+
+                <a
+                    href="expenses.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'expenses.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        💰
+                    </span>
+
+                    <span>
+                        Expenses
+                    </span>
+                </a>
+
+
+                <!-- Maintenance -->
+
+                <a
+                    href="maintenance.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'maintenance.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        🔧
+                    </span>
+
+                    <span>
+                        Maintenance
+                    </span>
+                </a>
+
+
+                <!-- Reports -->
+
+                <a
+                    href="reports.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'reports.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        📈
+                    </span>
+
+                    <span>
+                        Reports
+                    </span>
+                </a>
+
+            </div>
+
+
+        <?php elseif ($isCustomerArea): ?>
+
+            <!-- ====================================================
+                 CUSTOMER NAVIGATION
+            ===================================================== -->
+
+            <p
+                class="mb-2 px-3 text-xs font-semibold
+                       uppercase tracking-wider text-slate-500"
+            >
+                My Rental
+            </p>
+
+
+            <div class="space-y-1">
+
+                <!-- Dashboard -->
+
+                <a
+                    href="dashboard.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'dashboard.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        📊
+                    </span>
+
+                    <span>
+                        Dashboard
+                    </span>
+                </a>
+
+
+                <!-- My Lease -->
+
+                <a
+                    href="leases.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'leases.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        📄
+                    </span>
+
+                    <span>
+                        My Lease
+                    </span>
+                </a>
+
+
+                <!-- My Payments -->
+
+                <a
+                    href="payments.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'payments.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        💳
+                    </span>
+
+                    <span>
+                        My Payments
+                    </span>
+                </a>
+
+
+                <!-- Maintenance -->
+
+                <a
+                    href="maintenance.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'maintenance.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">
+                        🔧
+                    </span>
+
+                    <span class="min-w-0 flex-1 truncate">
+                        Maintenance Requests
+                    </span>
+                </a>
+
+
+                <!-- Notifications -->
+
+                <a
+                    href="notifications.php"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'notifications.php',
+                               $currentPage
+                           ) ?>"
+                >
+
+                    <span class="w-6 shrink-0 text-center">
+                        🔔
+                    </span>
+
+                    <span class="min-w-0 flex-1 truncate">
+                        Notifications
+                    </span>
+
+
+                    <?php if ($unreadNotificationCount > 0): ?>
+
+                        <span
+                            class="flex h-5 min-w-5 shrink-0
+                                   items-center justify-center
+                                   rounded-full bg-red-500 px-1.5
+                                   text-[11px] font-bold text-white"
+                        >
+                            <?= $unreadNotificationCount ?>
+                        </span>
+
+                    <?php endif; ?>
+
+                </a>
+
+            </div>
+
+        <?php endif; ?>
+
+
+        <!-- ========================================================
+             ACCOUNT
+        ========================================================= -->
+
+        <div class="mt-8">
+
+            <p
+                class="mb-2 px-3 text-xs font-semibold
+                       uppercase tracking-wider text-slate-500"
+            >
+                Account
+            </p>
+
+
+            <div class="space-y-1">
+
+                <!-- Profile -->
+
+                <a
+                    href="<?= $isAdminArea || $isCustomerArea
+                        ? 'profile.php'
+                        : '#' ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'profile.php',
+                               $currentPage
+                           ) ?>"
+                >
+
+                    <span class="w-6 shrink-0 text-center">
+                        👤
+                    </span>
+
+                    <span>
+                        Profile
+                    </span>
+
+                </a>
+
+
+                <!-- Settings -->
+
+                <a
+                    href="<?= $isAdminArea || $isCustomerArea
+                        ? 'settings.php'
+                        : '#' ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'settings.php',
+                               $currentPage
+                           ) ?>"
+                >
+
+                    <span class="w-6 shrink-0 text-center">
+                        ⚙️
+                    </span>
+
+                    <span>
+                        Settings
+                    </span>
+
+                </a>
+
+            </div>
+
+        </div>
+
+    </nav>
+
+
+    <!-- ============================================================
+         LOGOUT
+    ============================================================= -->
+
+    <div
+        class="shrink-0 border-t border-slate-800 p-3"
+    >
+
+        <a
+            href="<?= $rootUrl ?>logout.php"
+            class="flex w-full items-center gap-3 rounded-lg
+                   px-3 py-3 text-sm font-medium
+                   text-slate-300 transition
+                   hover:bg-red-500/10 hover:text-red-400"
+        >
+
+            <span class="w-6 shrink-0 text-center">
+                🚪
+            </span>
+
+            <span>
+                Logout
+            </span>
+
+        </a>
+
+    </div>
+
 </aside>
+```
