@@ -1,50 +1,264 @@
 <?php
 
-require_once __DIR__ . "/auth.php";
+/*
+|--------------------------------------------------------------------------
+| PropertyPro Notification Backend
+|--------------------------------------------------------------------------
+| Shared notification storage for Administrator and Customer.
+|
+| Storage:
+|     /storage/notifications.json
+|
+|--------------------------------------------------------------------------
+*/
 
-/**
- * Create a notification for the administrator.
- */
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Notification Storage
+|--------------------------------------------------------------------------
+*/
+
+function notification_storage_file(): string
+{
+    return dirname(__DIR__) . '/storage/notifications.json';
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Make sure storage directory/file exists
+|--------------------------------------------------------------------------
+*/
+
+function ensure_notification_storage(): void
+{
+    $storageDirectory = dirname(notification_storage_file());
+
+    if (!is_dir($storageDirectory)) {
+        mkdir($storageDirectory, 0775, true);
+    }
+
+    $file = notification_storage_file();
+
+    if (!file_exists($file)) {
+        file_put_contents(
+            $file,
+            json_encode(
+                [],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
+            ),
+            LOCK_EX
+        );
+    }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Read Notifications
+|--------------------------------------------------------------------------
+*/
+
+function get_all_notifications(): array
+{
+    ensure_notification_storage();
+
+    $file = notification_storage_file();
+
+    $contents = file_get_contents($file);
+
+    if ($contents === false || trim($contents) === '') {
+        return [];
+    }
+
+    $notifications = json_decode($contents, true);
+
+    if (!is_array($notifications)) {
+        return [];
+    }
+
+    return $notifications;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Save Notifications
+|--------------------------------------------------------------------------
+*/
+
+function save_all_notifications(array $notifications): bool
+{
+    ensure_notification_storage();
+
+    $json = json_encode(
+        array_values($notifications),
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
+    );
+
+    if ($json === false) {
+        return false;
+    }
+
+    return file_put_contents(
+        notification_storage_file(),
+        $json,
+        LOCK_EX
+    ) !== false;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Create Notification
+|--------------------------------------------------------------------------
+*/
+
+function create_notification(
+    string $recipientRole,
+    string $type,
+    string $title,
+    string $message,
+    array $data = [],
+    ?string $recipientId = null
+): array {
+
+    $notifications = get_all_notifications();
+
+    $notification = [
+        'id' => 'NOT-' . strtoupper(bin2hex(random_bytes(5))),
+
+        'recipient_role' => $recipientRole,
+
+        'recipient_id' => $recipientId,
+
+        'type' => $type,
+
+        'title' => $title,
+
+        'message' => $message,
+
+        'data' => $data,
+
+        'read' => false,
+
+        'created_at' => date('Y-m-d H:i:s'),
+    ];
+
+    $notifications[] = $notification;
+
+    save_all_notifications($notifications);
+
+    return $notification;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Create Administrator Notification
+|--------------------------------------------------------------------------
+*/
+
 function add_admin_notification(
     string $type,
     string $title,
     string $message,
     array $data = []
-): void {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
-    }
+): array {
 
-    if (!isset($_SESSION['admin_notifications'])) {
-        $_SESSION['admin_notifications'] = [];
-    }
-
-    $_SESSION['admin_notifications'][] = [
-        'id' => 'ADMIN-NOT-' . uniqid(),
-        'type' => $type,
-        'title' => $title,
-        'message' => $message,
-        'date' => date('Y-m-d H:i:s'),
-        'read' => false,
-        'data' => $data,
-    ];
+    return create_notification(
+        'Administrator',
+        $type,
+        $title,
+        $message,
+        $data
+    );
 }
 
-/**
- * Get all admin notifications.
- */
+
+/*
+|--------------------------------------------------------------------------
+| Create Customer Notification
+|--------------------------------------------------------------------------
+*/
+
+function add_customer_notification(
+    string $customerId,
+    string $type,
+    string $title,
+    string $message,
+    array $data = []
+): array {
+
+    return create_notification(
+        'Customer',
+        $type,
+        $title,
+        $message,
+        $data,
+        $customerId
+    );
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Get Administrator Notifications
+|--------------------------------------------------------------------------
+*/
+
 function get_admin_notifications(): array
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
-    }
+    $notifications = get_all_notifications();
 
-    return $_SESSION['admin_notifications'] ?? [];
+    return array_values(
+        array_filter(
+            $notifications,
+            function ($notification) {
+
+                return ($notification['recipient_role'] ?? '') === 'Administrator';
+            }
+        )
+    );
 }
 
-/**
- * Get unread admin notification count.
- */
+
+/*
+|--------------------------------------------------------------------------
+| Get Customer Notifications
+|--------------------------------------------------------------------------
+*/
+
+function get_customer_notifications(string $customerId): array
+{
+    $notifications = get_all_notifications();
+
+    return array_values(
+        array_filter(
+            $notifications,
+            function ($notification) use ($customerId) {
+
+                return
+                    ($notification['recipient_role'] ?? '') === 'Customer'
+                    &&
+                    ($notification['recipient_id'] ?? '') === $customerId;
+            }
+        )
+    );
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Admin Unread Count
+|--------------------------------------------------------------------------
+*/
+
 function get_admin_unread_count(): int
 {
     $notifications = get_admin_notifications();
@@ -52,6 +266,7 @@ function get_admin_unread_count(): int
     $count = 0;
 
     foreach ($notifications as $notification) {
+
         if (empty($notification['read'])) {
             $count++;
         }
@@ -60,87 +275,228 @@ function get_admin_unread_count(): int
     return $count;
 }
 
-/**
- * Mark one admin notification as read.
- */
-function mark_admin_notification_read(string $id): void
+
+/*
+|--------------------------------------------------------------------------
+| Customer Unread Count
+|--------------------------------------------------------------------------
+*/
+
+function get_customer_unread_count(string $customerId): int
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
+    $notifications = get_customer_notifications($customerId);
+
+    $count = 0;
+
+    foreach ($notifications as $notification) {
+
+        if (empty($notification['read'])) {
+            $count++;
+        }
     }
 
-    if (empty($_SESSION['admin_notifications'])) {
-        return;
-    }
+    return $count;
+}
 
-    foreach ($_SESSION['admin_notifications'] as &$notification) {
-        if (($notification['id'] ?? '') === $id) {
+
+/*
+|--------------------------------------------------------------------------
+| Mark Notification As Read
+|--------------------------------------------------------------------------
+*/
+
+function mark_notification_read(string $notificationId): bool
+{
+    $notifications = get_all_notifications();
+
+    $updated = false;
+
+    foreach ($notifications as &$notification) {
+
+        if (($notification['id'] ?? '') === $notificationId) {
+
             $notification['read'] = true;
+
+            $updated = true;
+
             break;
         }
     }
 
     unset($notification);
+
+    if ($updated) {
+        return save_all_notifications($notifications);
+    }
+
+    return false;
 }
 
-/**
- * Mark all admin notifications as read.
- */
-function mark_all_admin_notifications_read(): void
+
+/*
+|--------------------------------------------------------------------------
+| Mark All Admin Notifications As Read
+|--------------------------------------------------------------------------
+*/
+
+function mark_all_admin_notifications_read(): bool
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
-    }
+    $notifications = get_all_notifications();
 
-    if (empty($_SESSION['admin_notifications'])) {
-        return;
-    }
+    $updated = false;
 
-    foreach ($_SESSION['admin_notifications'] as &$notification) {
-        $notification['read'] = true;
+    foreach ($notifications as &$notification) {
+
+        if (
+            ($notification['recipient_role'] ?? '') === 'Administrator'
+            &&
+            empty($notification['read'])
+        ) {
+
+            $notification['read'] = true;
+
+            $updated = true;
+        }
     }
 
     unset($notification);
+
+    if ($updated) {
+        return save_all_notifications($notifications);
+    }
+
+    return true;
 }
 
-/**
- * Delete one admin notification.
- */
-function delete_admin_notification(string $id): void
+
+/*
+|--------------------------------------------------------------------------
+| Mark All Customer Notifications As Read
+|--------------------------------------------------------------------------
+*/
+
+function mark_all_customer_notifications_read(
+    string $customerId
+): bool {
+
+    $notifications = get_all_notifications();
+
+    $updated = false;
+
+    foreach ($notifications as &$notification) {
+
+        if (
+            ($notification['recipient_role'] ?? '') === 'Customer'
+            &&
+            ($notification['recipient_id'] ?? '') === $customerId
+            &&
+            empty($notification['read'])
+        ) {
+
+            $notification['read'] = true;
+
+            $updated = true;
+        }
+    }
+
+    unset($notification);
+
+    if ($updated) {
+        return save_all_notifications($notifications);
+    }
+
+    return true;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Delete Notification
+|--------------------------------------------------------------------------
+*/
+
+function delete_notification(string $notificationId): bool
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
-    }
+    $notifications = get_all_notifications();
 
-    if (empty($_SESSION['admin_notifications'])) {
-        return;
-    }
+    $originalCount = count($notifications);
 
-    $_SESSION['admin_notifications'] = array_values(
+    $notifications = array_values(
         array_filter(
-            $_SESSION['admin_notifications'],
-            function ($notification) use ($id) {
-                return ($notification['id'] ?? '') !== $id;
+            $notifications,
+            function ($notification) use ($notificationId) {
+
+                return ($notification['id'] ?? '') !== $notificationId;
             }
         )
     );
-}
 
-/**
- * Clear all admin notifications.
- */
-function clear_admin_notifications(): void
-{
-    if (session_status() !== PHP_SESSION_ACTIVE) {
-        session_start();
+    if (count($notifications) === $originalCount) {
+        return false;
     }
 
-    $_SESSION['admin_notifications'] = [];
+    return save_all_notifications($notifications);
 }
 
-/**
- * Escape notification output.
- */
+
+/*
+|--------------------------------------------------------------------------
+| Clear All Admin Notifications
+|--------------------------------------------------------------------------
+*/
+
+function clear_admin_notifications(): bool
+{
+    $notifications = get_all_notifications();
+
+    $notifications = array_values(
+        array_filter(
+            $notifications,
+            function ($notification) {
+
+                return ($notification['recipient_role'] ?? '') !== 'Administrator';
+            }
+        )
+    );
+
+    return save_all_notifications($notifications);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Clear Customer Notifications
+|--------------------------------------------------------------------------
+*/
+
+function clear_customer_notifications(string $customerId): bool
+{
+    $notifications = get_all_notifications();
+
+    $notifications = array_values(
+        array_filter(
+            $notifications,
+            function ($notification) use ($customerId) {
+
+                return !(
+                    ($notification['recipient_role'] ?? '') === 'Customer'
+                    &&
+                    ($notification['recipient_id'] ?? '') === $customerId
+                );
+            }
+        )
+    );
+
+    return save_all_notifications($notifications);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Escape Notification Text
+|--------------------------------------------------------------------------
+*/
+
 function notification_escape(string $value): string
 {
     return htmlspecialchars(
@@ -150,41 +506,72 @@ function notification_escape(string $value): string
     );
 }
 
-/**
- * Notification icon.
- */
-function admin_notification_icon(string $type): string
+
+/*
+|--------------------------------------------------------------------------
+| Notification Icon
+|--------------------------------------------------------------------------
+*/
+
+function notification_icon(string $type): string
 {
     return match ($type) {
+
         'maintenance' => '🔧',
+
         'payment' => '💰',
+
         'lease' => '📄',
+
         'profile' => '👤',
+
         'message' => '💬',
+
         'system' => '⚙️',
+
         default => '🔔',
     };
 }
 
-/**
- * Notification background.
- */
-function admin_notification_style(string $type): string
+
+/*
+|--------------------------------------------------------------------------
+| Notification Style
+|--------------------------------------------------------------------------
+*/
+
+function notification_style(string $type): string
 {
     return match ($type) {
-        'maintenance' => 'bg-orange-100 text-orange-600',
-        'payment' => 'bg-green-100 text-green-600',
-        'lease' => 'bg-blue-100 text-blue-600',
-        'profile' => 'bg-purple-100 text-purple-600',
-        'message' => 'bg-indigo-100 text-indigo-600',
-        default => 'bg-slate-100 text-slate-600',
+
+        'maintenance' =>
+            'bg-orange-100 text-orange-600',
+
+        'payment' =>
+            'bg-green-100 text-green-600',
+
+        'lease' =>
+            'bg-blue-100 text-blue-600',
+
+        'profile' =>
+            'bg-purple-100 text-purple-600',
+
+        'message' =>
+            'bg-indigo-100 text-indigo-600',
+
+        default =>
+            'bg-slate-100 text-slate-600',
     };
 }
 
-/**
- * Human-readable notification time.
- */
-function admin_notification_time(string $date): string
+
+/*
+|--------------------------------------------------------------------------
+| Notification Time
+|--------------------------------------------------------------------------
+*/
+
+function notification_time(string $date): string
 {
     $timestamp = strtotime($date);
 
@@ -199,19 +586,31 @@ function admin_notification_time(string $date): string
     }
 
     if ($difference < 3600) {
+
         $minutes = floor($difference / 60);
-        return $minutes . ' minute' . ($minutes === 1 ? '' : 's') . ' ago';
+
+        return $minutes . ' minute' .
+            ($minutes === 1 ? '' : 's') . ' ago';
     }
 
     if ($difference < 86400) {
+
         $hours = floor($difference / 3600);
-        return $hours . ' hour' . ($hours === 1 ? '' : 's') . ' ago';
+
+        return $hours . ' hour' .
+            ($hours === 1 ? '' : 's') . ' ago';
     }
 
     if ($difference < 604800) {
+
         $days = floor($difference / 86400);
-        return $days . ' day' . ($days === 1 ? '' : 's') . ' ago';
+
+        return $days . ' day' .
+            ($days === 1 ? '' : 's') . ' ago';
     }
 
-    return date('d M Y, H:i', $timestamp);
+    return date(
+        'd M Y, H:i',
+        $timestamp
+    );
 }
