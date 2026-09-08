@@ -7,6 +7,12 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 use MongoDB\Client;
 use MongoDB\Database;
 
+$dotenv = Dotenv\Dotenv::createImmutable(
+    dirname(__DIR__, 2)
+);
+
+$dotenv->safeLoad();
+
 final class Database
 {
     private static ?Client $client = null;
@@ -18,37 +24,31 @@ final class Database
             return self::$database;
         }
 
-        $uri = getenv('MONGODB_URI');
+        $uri = $_ENV['MONGODB_URI'] ?? '';
 
-        if (!$uri && isset($_ENV['MONGODB_URI'])) {
-            $uri = $_ENV['MONGODB_URI'];
+        if ($uri === '') {
+            throw new RuntimeException(
+                'MONGODB_URI is not configured.'
+            );
         }
 
-        if (!$uri) {
-            $uri = 'mongodb://127.0.0.1:27017';
-        }
-
-        $databaseName = getenv('MONGODB_DATABASE');
-
-        if (!$databaseName && isset($_ENV['MONGODB_DATABASE'])) {
-            $databaseName = $_ENV['MONGODB_DATABASE'];
-        }
-
-        if (!$databaseName) {
-            $databaseName = 'propertypro';
-        }
+        $databaseName =
+            $_ENV['MONGODB_DATABASE']
+            ?? 'Rental';
 
         self::$client = new Client($uri);
 
-        self::$database = self::$client->selectDatabase(
-            $databaseName
-        );
+        self::$database =
+            self::$client->selectDatabase(
+                $databaseName
+            );
 
         return self::$database;
     }
 
     public static function collection(string $name)
     {
-        return self::connect()->selectCollection($name);
+        return self::connect()
+            ->selectCollection($name);
     }
 }
