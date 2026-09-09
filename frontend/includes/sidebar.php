@@ -1,4 +1,3 @@
-```php
 <?php
 
 /*
@@ -15,27 +14,23 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+
 /*
 |--------------------------------------------------------------------------
-| Load authentication and notification helpers
+| Load authentication helper
 |--------------------------------------------------------------------------
 */
 
-$authFile = __DIR__ . "/auth.php";
+$authFile = __DIR__ . '/auth.php';
 
 if (file_exists($authFile)) {
     require_once $authFile;
 }
 
-$notificationsFile = __DIR__ . "/notifications.php";
-
-if (file_exists($notificationsFile)) {
-    require_once $notificationsFile;
-}
 
 /*
 |--------------------------------------------------------------------------
-| Current page
+| Current page information
 |--------------------------------------------------------------------------
 */
 
@@ -47,14 +42,16 @@ $scriptPath = str_replace(
     $_SERVER['SCRIPT_NAME'] ?? ''
 );
 
+
 /*
 |--------------------------------------------------------------------------
-| Determine current area
+| Determine current section
 |--------------------------------------------------------------------------
 */
 
 $isAdminArea = str_contains($scriptPath, '/admin/');
 $isCustomerArea = str_contains($scriptPath, '/customer/');
+
 
 /*
 |--------------------------------------------------------------------------
@@ -70,17 +67,49 @@ $userName = $user['name'] ?? 'User';
 $userEmail = $user['email'] ?? '';
 $userRole = $user['role'] ?? '';
 
+
 /*
 |--------------------------------------------------------------------------
-| Relative paths
+| Navigation URLs
 |--------------------------------------------------------------------------
 */
 
-if ($isAdminArea || $isCustomerArea) {
-    $rootUrl = '../';
+if ($isAdminArea) {
+
+    $dashboardUrl = 'dashboard.php';
+    $propertiesUrl = 'properties.php';
+    $unitsUrl = 'units.php';
+    $tenantsUrl = 'tenants.php';
+    $leasesUrl = 'leases.php';
+    $paymentsUrl = 'payments.php';
+    $expensesUrl = 'expenses.php';
+    $maintenanceUrl = 'maintenance.php';
+    $notificationsUrl = 'notifications.php';
+    $reportsUrl = 'reports.php';
+    $profileUrl = 'profile.php';
+    $settingsUrl = 'settings.php';
+
+    $logoutUrl = '../logout.php';
+
+} elseif ($isCustomerArea) {
+
+    $dashboardUrl = 'dashboard.php';
+    $leasesUrl = 'leases.php';
+    $paymentsUrl = 'payments.php';
+    $maintenanceUrl = 'maintenance.php';
+    $notificationsUrl = 'notifications.php';
+    $profileUrl = 'profile.php';
+    $settingsUrl = 'settings.php';
+
+    $logoutUrl = '../logout.php';
+
 } else {
-    $rootUrl = '';
+
+    $dashboardUrl = 'index.php';
+    $logoutUrl = 'logout.php';
+
 }
+
 
 /*
 |--------------------------------------------------------------------------
@@ -96,9 +125,11 @@ $nameParts = preg_split(
 $initials = '';
 
 foreach ($nameParts as $part) {
+
     if ($part !== '') {
         $initials .= strtoupper(substr($part, 0, 1));
     }
+
 }
 
 $initials = substr($initials, 0, 2);
@@ -107,6 +138,7 @@ if ($initials === '') {
     $initials = 'US';
 }
 
+
 /*
 |--------------------------------------------------------------------------
 | Active navigation helper
@@ -114,21 +146,28 @@ if ($initials === '') {
 */
 
 if (!function_exists('nav_active')) {
+
     function nav_active(
         string $page,
         string $currentPage
     ): string {
+
         if ($page === $currentPage) {
+
             return 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/20';
+
         }
 
         return 'text-slate-300 hover:bg-slate-800 hover:text-white';
+
     }
+
 }
+
 
 /*
 |--------------------------------------------------------------------------
-| Customer notification count
+| Notification count
 |--------------------------------------------------------------------------
 */
 
@@ -139,16 +178,22 @@ if (
     !empty($_SESSION['notifications']) &&
     is_array($_SESSION['notifications'])
 ) {
+
     foreach ($_SESSION['notifications'] as $notification) {
 
         if (
             is_array($notification) &&
             empty($notification['read'])
         ) {
+
             $unreadNotificationCount++;
+
         }
+
     }
+
 }
+
 
 /*
 |--------------------------------------------------------------------------
@@ -162,14 +207,18 @@ if (
     $isAdminArea &&
     function_exists('get_admin_unread_count')
 ) {
-    $adminUnreadNotificationCount = get_admin_unread_count();
+
+    $adminUnreadNotificationCount =
+        (int) get_admin_unread_count();
+
 }
 
 ?>
 
-<!-- ================================================================
+
+<!-- ============================================================
      MOBILE OVERLAY
-================================================================ -->
+============================================================= -->
 
 <div
     id="sidebarOverlay"
@@ -177,9 +226,9 @@ if (
 ></div>
 
 
-<!-- ================================================================
+<!-- ============================================================
      SIDEBAR
-================================================================ -->
+============================================================= -->
 
 <aside
     id="sidebar"
@@ -187,12 +236,14 @@ if (
            -translate-x-full flex-col
            bg-slate-950 text-white
            transition-transform duration-300
+           ease-in-out
            lg:translate-x-0"
 >
 
-    <!-- ============================================================
-         LOGO
-    ============================================================= -->
+
+    <!-- ========================================================
+         LOGO / HEADER
+    ========================================================= -->
 
     <div
         class="flex h-16 shrink-0 items-center justify-between
@@ -200,22 +251,21 @@ if (
     >
 
         <a
-            href="<?= $isAdminArea || $isCustomerArea
-                ? 'dashboard.php'
-                : 'index.php' ?>"
+            href="<?= htmlspecialchars(
+                $dashboardUrl,
+                ENT_QUOTES,
+                'UTF-8'
+            ) ?>"
             class="flex min-w-0 items-center gap-3"
         >
 
-            <!-- Logo -->
-
             <div
-                class="flex h-9 w-9 shrink-0 items-center justify-center
-                       rounded-lg bg-indigo-600 font-bold text-white"
+                class="flex h-9 w-9 shrink-0 items-center
+                       justify-center rounded-lg
+                       bg-indigo-600 font-bold text-white"
             >
                 P
             </div>
-
-            <!-- Brand -->
 
             <div class="min-w-0">
 
@@ -225,11 +275,19 @@ if (
 
                 <div class="truncate text-xs text-slate-400">
 
-                    <?= $isAdminArea
-                        ? 'Administration'
-                        : ($isCustomerArea
-                            ? 'Customer Portal'
-                            : 'Property Management') ?>
+                    <?php if ($isAdminArea): ?>
+
+                        Administration
+
+                    <?php elseif ($isCustomerArea): ?>
+
+                        Customer Portal
+
+                    <?php else: ?>
+
+                        Property Management
+
+                    <?php endif; ?>
 
                 </div>
 
@@ -238,15 +296,18 @@ if (
         </a>
 
 
-        <!-- Mobile Close Button -->
+        <!-- Mobile close button -->
 
         <button
             id="closeSidebar"
             type="button"
-            aria-label="Close sidebar"
-            class="ml-2 shrink-0 text-2xl leading-none
+            aria-label="Close navigation menu"
+            class="ml-2 flex h-9 w-9 shrink-0
+                   items-center justify-center
+                   rounded-lg text-2xl leading-none
                    text-slate-400 transition
-                   hover:text-white lg:hidden"
+                   hover:bg-slate-800 hover:text-white
+                   lg:hidden"
         >
             &times;
         </button>
@@ -254,9 +315,9 @@ if (
     </div>
 
 
-    <!-- ============================================================
+    <!-- ========================================================
          USER INFORMATION
-    ============================================================= -->
+    ========================================================= -->
 
     <div
         class="shrink-0 border-b border-slate-800 px-4 py-4"
@@ -264,11 +325,10 @@ if (
 
         <div class="flex min-w-0 items-center gap-3">
 
-            <!-- Avatar -->
-
             <div
-                class="flex h-10 w-10 shrink-0 items-center justify-center
-                       rounded-full bg-indigo-600 font-semibold text-white"
+                class="flex h-10 w-10 shrink-0 items-center
+                       justify-center rounded-full
+                       bg-indigo-600 font-semibold text-white"
             >
                 <?= htmlspecialchars(
                     $initials,
@@ -277,8 +337,6 @@ if (
                 ) ?>
             </div>
 
-
-            <!-- User Details -->
 
             <div class="min-w-0 flex-1">
 
@@ -320,19 +378,15 @@ if (
     </div>
 
 
-    <!-- ============================================================
+    <!-- ========================================================
          NAVIGATION
-    ============================================================= -->
+    ========================================================= -->
 
     <nav
         class="min-h-0 flex-1 overflow-y-auto px-3 py-5"
     >
 
         <?php if ($isAdminArea): ?>
-
-            <!-- ====================================================
-                 ADMIN NAVIGATION
-            ===================================================== -->
 
             <p
                 class="mb-2 px-3 text-xs font-semibold
@@ -344,10 +398,15 @@ if (
 
             <div class="space-y-1">
 
+
                 <!-- Dashboard -->
 
                 <a
-                    href="dashboard.php"
+                    href="<?= htmlspecialchars(
+                        $dashboardUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -355,20 +414,179 @@ if (
                                $currentPage
                            ) ?>"
                 >
-                    <span class="w-6 shrink-0 text-center">
-                        📊
-                    </span>
+                    <span class="w-6 shrink-0 text-center">📊</span>
+                    <span>Dashboard</span>
+                </a>
 
-                    <span>
-                        Dashboard
-                    </span>
+
+                <!-- Properties -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $propertiesUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'properties.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">🏢</span>
+                    <span>Properties</span>
+                </a>
+
+
+                <!-- Units -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $unitsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'units.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">🚪</span>
+                    <span>Units</span>
+                </a>
+
+
+                <!-- Tenants -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $tenantsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'tenants.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">👥</span>
+                    <span>Tenants</span>
+                </a>
+
+
+                <!-- Leases -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $leasesUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'leases.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">📄</span>
+                    <span>Leases</span>
+                </a>
+
+
+                <!-- Payments -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $paymentsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'payments.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">💳</span>
+                    <span>Payments</span>
+                </a>
+
+
+                <!-- Expenses -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $expensesUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'expenses.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">💰</span>
+                    <span>Expenses</span>
+                </a>
+
+
+                <!-- Maintenance -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $maintenanceUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'maintenance.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">🔧</span>
+                    <span>Maintenance</span>
+                </a>
+
+
+                <!-- Reports -->
+
+                <a
+                    href="<?= htmlspecialchars(
+                        $reportsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
+                    class="flex items-center gap-3 rounded-lg
+                           px-3 py-3 text-sm font-medium transition
+                           <?= nav_active(
+                               'reports.php',
+                               $currentPage
+                           ) ?>"
+                >
+                    <span class="w-6 shrink-0 text-center">📈</span>
+                    <span>Reports</span>
                 </a>
 
 
                 <!-- Notifications -->
 
                 <a
-                    href="notifications.php"
+                    href="<?= htmlspecialchars(
+                        $notificationsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -384,7 +602,6 @@ if (
                     <span class="min-w-0 flex-1 truncate">
                         Notifications
                     </span>
-
 
                     <?php if ($adminUnreadNotificationCount > 0): ?>
 
@@ -403,182 +620,11 @@ if (
 
                 </a>
 
-
-                <!-- Properties -->
-
-                <a
-                    href="properties.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'properties.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        🏢
-                    </span>
-
-                    <span>
-                        Properties
-                    </span>
-                </a>
-
-
-                <!-- Units -->
-
-                <a
-                    href="units.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'units.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        🚪
-                    </span>
-
-                    <span>
-                        Units
-                    </span>
-                </a>
-
-
-                <!-- Tenants -->
-
-                <a
-                    href="tenants.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'tenants.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        👥
-                    </span>
-
-                    <span>
-                        Tenants
-                    </span>
-                </a>
-
-
-                <!-- Payments -->
-
-                <a
-                    href="payments.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'payments.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        💳
-                    </span>
-
-                    <span>
-                        Payments
-                    </span>
-                </a>
-
-
-                <!-- Leases -->
-
-                <a
-                    href="leases.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'leases.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        📄
-                    </span>
-
-                    <span>
-                        Leases
-                    </span>
-                </a>
-
-
-                <!-- Expenses -->
-
-                <a
-                    href="expenses.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'expenses.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        💰
-                    </span>
-
-                    <span>
-                        Expenses
-                    </span>
-                </a>
-
-
-                <!-- Maintenance -->
-
-                <a
-                    href="maintenance.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'maintenance.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        🔧
-                    </span>
-
-                    <span>
-                        Maintenance
-                    </span>
-                </a>
-
-
-                <!-- Reports -->
-
-                <a
-                    href="reports.php"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'reports.php',
-                               $currentPage
-                           ) ?>"
-                >
-                    <span class="w-6 shrink-0 text-center">
-                        📈
-                    </span>
-
-                    <span>
-                        Reports
-                    </span>
-                </a>
-
             </div>
 
 
         <?php elseif ($isCustomerArea): ?>
 
-            <!-- ====================================================
-                 CUSTOMER NAVIGATION
-            ===================================================== -->
 
             <p
                 class="mb-2 px-3 text-xs font-semibold
@@ -590,10 +636,15 @@ if (
 
             <div class="space-y-1">
 
+
                 <!-- Dashboard -->
 
                 <a
-                    href="dashboard.php"
+                    href="<?= htmlspecialchars(
+                        $dashboardUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -601,20 +652,19 @@ if (
                                $currentPage
                            ) ?>"
                 >
-                    <span class="w-6 shrink-0 text-center">
-                        📊
-                    </span>
-
-                    <span>
-                        Dashboard
-                    </span>
+                    <span class="w-6 shrink-0 text-center">📊</span>
+                    <span>Dashboard</span>
                 </a>
 
 
                 <!-- My Lease -->
 
                 <a
-                    href="leases.php"
+                    href="<?= htmlspecialchars(
+                        $leasesUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -622,20 +672,19 @@ if (
                                $currentPage
                            ) ?>"
                 >
-                    <span class="w-6 shrink-0 text-center">
-                        📄
-                    </span>
-
-                    <span>
-                        My Lease
-                    </span>
+                    <span class="w-6 shrink-0 text-center">📄</span>
+                    <span>My Lease</span>
                 </a>
 
 
                 <!-- My Payments -->
 
                 <a
-                    href="payments.php"
+                    href="<?= htmlspecialchars(
+                        $paymentsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -643,20 +692,19 @@ if (
                                $currentPage
                            ) ?>"
                 >
-                    <span class="w-6 shrink-0 text-center">
-                        💳
-                    </span>
-
-                    <span>
-                        My Payments
-                    </span>
+                    <span class="w-6 shrink-0 text-center">💳</span>
+                    <span>My Payments</span>
                 </a>
 
 
                 <!-- Maintenance -->
 
                 <a
-                    href="maintenance.php"
+                    href="<?= htmlspecialchars(
+                        $maintenanceUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -664,20 +712,19 @@ if (
                                $currentPage
                            ) ?>"
                 >
-                    <span class="w-6 shrink-0 text-center">
-                        🔧
-                    </span>
-
-                    <span class="min-w-0 flex-1 truncate">
-                        Maintenance Requests
-                    </span>
+                    <span class="w-6 shrink-0 text-center">🔧</span>
+                    <span>Maintenance Requests</span>
                 </a>
 
 
                 <!-- Notifications -->
 
                 <a
-                    href="notifications.php"
+                    href="<?= htmlspecialchars(
+                        $notificationsUrl,
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>"
                     class="flex items-center gap-3 rounded-lg
                            px-3 py-3 text-sm font-medium transition
                            <?= nav_active(
@@ -694,7 +741,6 @@ if (
                         Notifications
                     </span>
 
-
                     <?php if ($unreadNotificationCount > 0): ?>
 
                         <span
@@ -703,7 +749,9 @@ if (
                                    rounded-full bg-red-500 px-1.5
                                    text-[11px] font-bold text-white"
                         >
-                            <?= $unreadNotificationCount ?>
+                            <?= $unreadNotificationCount > 99
+                                ? '99+'
+                                : $unreadNotificationCount ?>
                         </span>
 
                     <?php endif; ?>
@@ -712,91 +760,97 @@ if (
 
             </div>
 
+
         <?php endif; ?>
 
 
-        <!-- ========================================================
+        <!-- ====================================================
              ACCOUNT
-        ========================================================= -->
+        ===================================================== -->
 
-        <div class="mt-8">
+        <?php if ($isAdminArea || $isCustomerArea): ?>
 
-            <p
-                class="mb-2 px-3 text-xs font-semibold
-                       uppercase tracking-wider text-slate-500"
-            >
-                Account
-            </p>
+            <div class="mt-8">
 
-
-            <div class="space-y-1">
-
-                <!-- Profile -->
-
-                <a
-                    href="<?= $isAdminArea || $isCustomerArea
-                        ? 'profile.php'
-                        : '#' ?>"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'profile.php',
-                               $currentPage
-                           ) ?>"
+                <p
+                    class="mb-2 px-3 text-xs font-semibold
+                           uppercase tracking-wider text-slate-500"
                 >
-
-                    <span class="w-6 shrink-0 text-center">
-                        👤
-                    </span>
-
-                    <span>
-                        Profile
-                    </span>
-
-                </a>
+                    Account
+                </p>
 
 
-                <!-- Settings -->
+                <div class="space-y-1">
 
-                <a
-                    href="<?= $isAdminArea || $isCustomerArea
-                        ? 'settings.php'
-                        : '#' ?>"
-                    class="flex items-center gap-3 rounded-lg
-                           px-3 py-3 text-sm font-medium transition
-                           <?= nav_active(
-                               'settings.php',
-                               $currentPage
-                           ) ?>"
-                >
 
-                    <span class="w-6 shrink-0 text-center">
-                        ⚙️
-                    </span>
+                    <!-- Profile -->
 
-                    <span>
-                        Settings
-                    </span>
+                    <a
+                        href="<?= htmlspecialchars(
+                            $profileUrl,
+                            ENT_QUOTES,
+                            'UTF-8'
+                        ) ?>"
+                        class="flex items-center gap-3 rounded-lg
+                               px-3 py-3 text-sm font-medium transition
+                               <?= nav_active(
+                                   'profile.php',
+                                   $currentPage
+                               ) ?>"
+                    >
+                        <span class="w-6 shrink-0 text-center">
+                            👤
+                        </span>
 
-                </a>
+                        <span>Profile</span>
+                    </a>
+
+
+                    <!-- Settings -->
+
+                    <a
+                        href="<?= htmlspecialchars(
+                            $settingsUrl,
+                            ENT_QUOTES,
+                            'UTF-8'
+                        ) ?>"
+                        class="flex items-center gap-3 rounded-lg
+                               px-3 py-3 text-sm font-medium transition
+                               <?= nav_active(
+                                   'settings.php',
+                                   $currentPage
+                               ) ?>"
+                    >
+                        <span class="w-6 shrink-0 text-center">
+                            ⚙️
+                        </span>
+
+                        <span>Settings</span>
+                    </a>
+
+                </div>
 
             </div>
 
-        </div>
+        <?php endif; ?>
 
     </nav>
 
 
-    <!-- ============================================================
+    <!-- ========================================================
          LOGOUT
-    ============================================================= -->
+    ========================================================= -->
 
     <div
         class="shrink-0 border-t border-slate-800 p-3"
     >
 
         <a
-            href="<?= $rootUrl ?>logout.php"
+            href="<?= htmlspecialchars(
+                $logoutUrl,
+                ENT_QUOTES,
+                'UTF-8'
+            ) ?>"
             class="flex w-full items-center gap-3 rounded-lg
                    px-3 py-3 text-sm font-medium
                    text-slate-300 transition
@@ -807,13 +861,232 @@ if (
                 🚪
             </span>
 
-            <span>
-                Logout
-            </span>
+            <span>Logout</span>
 
         </a>
 
     </div>
 
 </aside>
-```
+
+
+<!-- ============================================================
+     SIDEBAR JAVASCRIPT
+============================================================= -->
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+
+    const openButton =
+        document.getElementById('mobileMenuButton');
+
+    const closeButton =
+        document.getElementById('closeSidebar');
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Open sidebar
+    |--------------------------------------------------------------------------
+    */
+
+    function openSidebar() {
+
+        if (!sidebar) {
+            return;
+        }
+
+        sidebar.classList.remove('-translate-x-full');
+
+        if (overlay) {
+            overlay.classList.remove('hidden');
+        }
+
+        if (openButton) {
+            openButton.setAttribute(
+                'aria-expanded',
+                'true'
+            );
+        }
+
+        document.body.classList.add('overflow-hidden');
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Close sidebar
+    |--------------------------------------------------------------------------
+    */
+
+    function closeSidebar() {
+
+        if (!sidebar) {
+            return;
+        }
+
+        sidebar.classList.add('-translate-x-full');
+
+        if (overlay) {
+            overlay.classList.add('hidden');
+        }
+
+        if (openButton) {
+            openButton.setAttribute(
+                'aria-expanded',
+                'false'
+            );
+        }
+
+        document.body.classList.remove('overflow-hidden');
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Mobile menu button
+    |--------------------------------------------------------------------------
+    */
+
+    if (openButton) {
+
+        openButton.addEventListener(
+            'click',
+            function (event) {
+
+                event.preventDefault();
+
+                openSidebar();
+
+            }
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Close button
+    |--------------------------------------------------------------------------
+    */
+
+    if (closeButton) {
+
+        closeButton.addEventListener(
+            'click',
+            function (event) {
+
+                event.preventDefault();
+
+                closeSidebar();
+
+            }
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Overlay
+    |--------------------------------------------------------------------------
+    */
+
+    if (overlay) {
+
+        overlay.addEventListener(
+            'click',
+            function () {
+
+                closeSidebar();
+
+            }
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Close when navigation link is clicked
+    |--------------------------------------------------------------------------
+    */
+
+    if (sidebar) {
+
+        const links =
+            sidebar.querySelectorAll('a');
+
+        links.forEach(function (link) {
+
+            link.addEventListener(
+                'click',
+                function () {
+
+                    if (window.innerWidth < 1024) {
+                        closeSidebar();
+                    }
+
+                }
+            );
+
+        });
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Escape key
+    |--------------------------------------------------------------------------
+    */
+
+    document.addEventListener(
+        'keydown',
+        function (event) {
+
+            if (event.key === 'Escape') {
+                closeSidebar();
+            }
+
+        }
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Window resize
+    |--------------------------------------------------------------------------
+    */
+
+    window.addEventListener(
+        'resize',
+        function () {
+
+            if (window.innerWidth >= 1024) {
+
+                if (overlay) {
+                    overlay.classList.add('hidden');
+                }
+
+                if (openButton) {
+                    openButton.setAttribute(
+                        'aria-expanded',
+                        'false'
+                    );
+                }
+
+                document.body.classList.remove(
+                    'overflow-hidden'
+                );
+
+            }
+
+        }
+    );
+
+});
+</script>

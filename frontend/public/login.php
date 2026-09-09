@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . "/../includes/auth.php";
+require_once __DIR__ . "/../includes/api.php";
 
 if (is_logged_in()) {
     redirect_by_role();
@@ -19,55 +20,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     } else {
 
-        /*
-        |--------------------------------------------------------------------------
-        | DEMO ADMIN
-        |--------------------------------------------------------------------------
-        */
+        $result = api_request(
+            'POST',
+            '/auth/login',
+            [
+                'email' => $email,
+                'password' => $password,
+            ]
+        );
 
         if (
-            $email === 'admin@example.com' &&
-            $password === 'admin123'
+            !empty($result['success']) &&
+            !empty($result['data']['token']) &&
+            !empty($result['data']['user'])
         ) {
 
             session_regenerate_id(true);
 
-            $_SESSION['user'] = [
-                'id' => 'ADM-001',
-                'name' => 'Property Manager',
-                'email' => $email,
-                'role' => 'Administrator'
-            ];
+            $_SESSION['propertypro_token'] =
+                $result['data']['token'];
 
-            header("Location: admin/dashboard.php");
-            exit;
+            $_SESSION['user'] =
+                $result['data']['user'];
+
+            redirect_by_role();
+
+        } else {
+
+            $error =
+                $result['message']
+                ?? 'Invalid email or password.';
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | DEMO CUSTOMER
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            $email === 'customer@example.com' &&
-            $password === 'customer123'
-        ) {
-
-            session_regenerate_id(true);
-
-            $_SESSION['user'] = [
-                'id' => 'CUS-001',
-                'name' => 'John Mwangi',
-                'email' => $email,
-                'role' => 'Customer'
-            ];
-
-            header("Location: customer/dashboard.php");
-            exit;
-        }
-
-        $error = 'Invalid email or password.';
     }
 }
 
@@ -108,14 +91,19 @@ require_once __DIR__ . "/../includes/header.php";
 
             <?php endif; ?>
 
-            <form method="POST" action="login.php" class="space-y-5">
+            <form
+                method="POST"
+                action="login.php"
+                class="space-y-5"
+            >
 
                 <!-- Email -->
                 <div>
 
                     <label
                         for="email"
-                        class="mb-2 block text-sm font-medium text-slate-700">
+                        class="mb-2 block text-sm font-medium text-slate-700"
+                    >
                         Email Address
                     </label>
 
@@ -126,7 +114,9 @@ require_once __DIR__ . "/../includes/header.php";
                         value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
                         placeholder="Enter your email"
                         required
-                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                        autocomplete="email"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    >
 
                 </div>
 
@@ -135,7 +125,8 @@ require_once __DIR__ . "/../includes/header.php";
 
                     <label
                         for="password"
-                        class="mb-2 block text-sm font-medium text-slate-700">
+                        class="mb-2 block text-sm font-medium text-slate-700"
+                    >
                         Password
                     </label>
 
@@ -145,7 +136,9 @@ require_once __DIR__ . "/../includes/header.php";
                         type="password"
                         placeholder="Enter your password"
                         required
-                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
+                        autocomplete="current-password"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    >
 
                 </div>
 
@@ -157,7 +150,8 @@ require_once __DIR__ . "/../includes/header.php";
                         <input
                             type="checkbox"
                             name="remember"
-                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        >
 
                         Remember me
 
@@ -165,7 +159,8 @@ require_once __DIR__ . "/../includes/header.php";
 
                     <a
                         href="#"
-                        class="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+                        class="text-sm font-medium text-indigo-600 hover:text-indigo-700"
+                    >
                         Forgot password?
                     </a>
 
@@ -174,7 +169,8 @@ require_once __DIR__ . "/../includes/header.php";
                 <!-- Submit -->
                 <button
                     type="submit"
-                    class="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                    class="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
                     Sign In
                 </button>
 
@@ -187,54 +183,10 @@ require_once __DIR__ . "/../includes/header.php";
 
                 <a
                     href="register.php"
-                    class="font-semibold text-indigo-600 hover:text-indigo-700">
+                    class="font-semibold text-indigo-600 hover:text-indigo-700"
+                >
                     Create an account
                 </a>
-
-            </div>
-
-        </div>
-
-        <!-- Demo accounts -->
-        <div class="mt-6 rounded-xl border border-slate-200 bg-white p-5">
-
-            <h3 class="mb-3 text-sm font-semibold text-slate-800">
-                Demo Accounts
-            </h3>
-
-            <div class="space-y-3 text-xs">
-
-                <div class="rounded-lg bg-indigo-50 p-3">
-
-                    <p class="font-semibold text-indigo-800">
-                        Administrator
-                    </p>
-
-                    <p class="mt-1 text-slate-600">
-                        Email: admin@example.com
-                    </p>
-
-                    <p class="text-slate-600">
-                        Password: admin123
-                    </p>
-
-                </div>
-
-                <div class="rounded-lg bg-slate-50 p-3">
-
-                    <p class="font-semibold text-slate-800">
-                        Customer
-                    </p>
-
-                    <p class="mt-1 text-slate-600">
-                        Email: customer@example.com
-                    </p>
-
-                    <p class="text-slate-600">
-                        Password: customer123
-                    </p>
-
-                </div>
 
             </div>
 
