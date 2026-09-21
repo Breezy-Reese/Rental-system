@@ -3,11 +3,23 @@
 require_once __DIR__ . "/../includes/auth.php";
 require_once __DIR__ . "/../includes/api.php";
 
+/*
+|--------------------------------------------------------------------------
+| Already Logged In
+|--------------------------------------------------------------------------
+*/
+
 if (is_logged_in()) {
     redirect_by_role();
 }
 
 $error = '';
+
+/*
+|--------------------------------------------------------------------------
+| Login
+|--------------------------------------------------------------------------
+*/
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
@@ -35,15 +47,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             !empty($result['data']['user'])
         ) {
 
-            session_regenerate_id(true);
+            $user = $result['data']['user'];
 
-            $_SESSION['propertypro_token'] =
-                $result['data']['token'];
+            /*
+             * Normalize role returned by backend.
+             */
+            $rawRole = $user['role'] ?? '';
 
-            $_SESSION['user'] =
-                $result['data']['user'];
+            $normalizedRole = strtolower(trim((string) $rawRole));
 
-            redirect_by_role();
+            if ($normalizedRole === 'customer') {
+                $user['role'] = 'Customer';
+            } elseif (
+                $normalizedRole === 'administrator' ||
+                $normalizedRole === 'admin'
+            ) {
+                $user['role'] = 'Administrator';
+            } else {
+                $error = 'Your account has an invalid role. Please contact the administrator.';
+            }
+
+            if ($error === '') {
+
+                session_regenerate_id(true);
+
+                /*
+                 * Store JWT.
+                 */
+                $_SESSION['propertypro_token'] =
+                    $result['data']['token'];
+
+                /*
+                 * Store authenticated API user.
+                 */
+                $_SESSION['user'] = $user;
+
+                redirect_by_role();
+            }
 
         } else {
 
@@ -86,7 +126,7 @@ require_once __DIR__ . "/../includes/header.php";
             <?php if ($error): ?>
 
                 <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    <?= htmlspecialchars($error) ?>
+                    <?= e($error) ?>
                 </div>
 
             <?php endif; ?>
@@ -97,7 +137,6 @@ require_once __DIR__ . "/../includes/header.php";
                 class="space-y-5"
             >
 
-                <!-- Email -->
                 <div>
 
                     <label
@@ -111,7 +150,7 @@ require_once __DIR__ . "/../includes/header.php";
                         id="email"
                         name="email"
                         type="email"
-                        value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+                        value="<?= e($_POST['email'] ?? '') ?>"
                         placeholder="Enter your email"
                         required
                         autocomplete="email"
@@ -120,7 +159,6 @@ require_once __DIR__ . "/../includes/header.php";
 
                 </div>
 
-                <!-- Password -->
                 <div>
 
                     <label
@@ -142,7 +180,6 @@ require_once __DIR__ . "/../includes/header.php";
 
                 </div>
 
-                <!-- Remember -->
                 <div class="flex items-center justify-between">
 
                     <label class="flex items-center gap-2 text-sm text-slate-600">
@@ -157,16 +194,8 @@ require_once __DIR__ . "/../includes/header.php";
 
                     </label>
 
-                    <a
-                        href="#"
-                        class="text-sm font-medium text-indigo-600 hover:text-indigo-700"
-                    >
-                        Forgot password?
-                    </a>
-
                 </div>
 
-                <!-- Submit -->
                 <button
                     type="submit"
                     class="w-full rounded-lg bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
@@ -176,7 +205,6 @@ require_once __DIR__ . "/../includes/header.php";
 
             </form>
 
-            <!-- Register -->
             <div class="mt-6 text-center text-sm text-slate-600">
 
                 Don't have an account?

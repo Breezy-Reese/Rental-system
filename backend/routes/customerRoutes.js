@@ -9,6 +9,7 @@ const {
   getMyPayments,
   getMyMaintenance,
   createMyMaintenance,
+  createMyPayment,
   getProfile,
   updateProfile,
   changePassword,
@@ -16,21 +17,80 @@ const {
 
 const router = express.Router();
 
+// ============================================================
+// CUSTOMER AUTHENTICATION
+// ============================================================
+
 router.use(protect);
 router.use(customerOnly);
 
-router.get("/dashboard", getDashboard);
+// ============================================================
+// DASHBOARD
+// ============================================================
 
-router.get("/lease", getMyLease);
+router.get(
+  "/dashboard",
+  getDashboard
+);
 
-router.get("/payments", getMyPayments);
+// ============================================================
+// LEASE
+// ============================================================
 
-router.get("/maintenance", getMyMaintenance);
-router.post("/maintenance", createMyMaintenance);
+router.get(
+  "/lease",
+  getMyLease
+);
 
-router.get("/profile", getProfile);
-router.put("/profile", updateProfile);
+// ============================================================
+// PAYMENTS
+// ============================================================
 
-router.put("/settings/password", changePassword);
+router.get(
+  "/payments",
+  getMyPayments
+);
+
+router.post(
+  "/payments",
+  createMyPayment
+);
+
+// ============================================================
+// MAINTENANCE
+// ============================================================
+
+router.get(
+  "/maintenance",
+  getMyMaintenance
+);
+
+router.post(
+  "/maintenance",
+  createMyMaintenance
+);
+
+// ============================================================
+// PROFILE
+// ============================================================
+
+router.get(
+  "/profile",
+  getProfile
+);
+
+router.put(
+  "/profile",
+  updateProfile
+);
+
+// ============================================================
+// PASSWORD
+// ============================================================
+
+router.put(
+  "/settings/password",
+  changePassword
+);
 
 module.exports = router;
