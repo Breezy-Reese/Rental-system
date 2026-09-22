@@ -9,8 +9,57 @@ $pageTitle = "Maintenance Requests";
 */
 
 require_once __DIR__ . "/../../includes/auth.php";
+require_once __DIR__ . "/../../includes/api.php";
 
 require_login();
+
+/*
+|--------------------------------------------------------------------------
+| Handle new request submission
+|--------------------------------------------------------------------------
+*/
+
+$submitError = '';
+$submitSuccess = false;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['issue'])) {
+
+    $issue = trim($_POST['issue'] ?? '');
+    $priority = ucfirst(trim($_POST['priority'] ?? 'Medium'));
+    $description = trim($_POST['description'] ?? '');
+
+    if ($issue === '') {
+        $submitError = 'Please describe the issue.';
+    } else {
+
+        /*
+         * The API requires a unique maintenanceId to be supplied
+         * by the client - it does not generate one itself.
+         */
+        $maintenanceId =
+            'MR-' . date('YmdHis') . '-' . strtoupper(substr(uniqid(), -5));
+
+        $result = api_post('/customer/maintenance', [
+            'maintenanceId' => $maintenanceId,
+            'issue' => $issue,
+            'priority' => $priority,
+            'description' => $description,
+        ]);
+
+        if (!empty($result['success'])) {
+            header('Location: maintenance.php?submitted=1');
+            exit;
+        } else {
+            $submitError =
+                $result['message']
+                ?? 'Failed to submit request. Please try again.';
+        }
+    }
+}
+
+if (isset($_GET['submitted'])) {
+    $submitSuccess = true;
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -47,17 +96,7 @@ $customerName = $user['name'] ?? '';
 |--------------------------------------------------------------------------
 */
 
-$customerRequests = [];
-
-foreach ($maintenanceRequests as $request) {
-
-    if (
-        isset($request['tenant']) &&
-        strcasecmp($request['tenant'], $customerName) === 0
-    ) {
-        $customerRequests[] = $request;
-    }
-}
+$customerRequests = $maintenanceRequests;
 
 /*
 |--------------------------------------------------------------------------
@@ -139,6 +178,16 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             </button>
 
         </div>
+
+
+        <!-- Success message -->
+        <?php if ($submitSuccess): ?>
+
+            <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                Your maintenance request was submitted successfully.
+            </div>
+
+        <?php endif; ?>
 
 
         <!-- Statistics -->
@@ -439,7 +488,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 <div
     id="requestModal"
-    class="fixed inset-0 z-[100] hidden overflow-y-auto bg-black/50 px-4 py-8">
+    class="fixed inset-0 z-[100] <?= $submitError ? '' : 'hidden' ?> overflow-y-auto bg-black/50 px-4 py-8">
 
     <div class="mx-auto max-w-lg rounded-xl bg-white shadow-xl">
 
@@ -470,6 +519,16 @@ require_once __DIR__ . "/../../includes/sidebar.php";
         </div>
 
 
+        <!-- Error message -->
+        <?php if ($submitError): ?>
+
+            <div class="mx-6 mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($submitError) ?>
+            </div>
+
+        <?php endif; ?>
+
+
         <!-- Form -->
         <form method="POST" class="space-y-5 p-6">
 
@@ -483,6 +542,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     type="text"
                     name="issue"
                     required
+                    value="<?= htmlspecialchars($_POST['issue'] ?? '') ?>"
                     placeholder="e.g. Broken water pipe"
                     class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
 
@@ -495,23 +555,25 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     Priority
                 </label>
 
+                <?php $selectedPriority = $_POST['priority'] ?? 'Medium'; ?>
+
                 <select
                     name="priority"
                     class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
 
-                    <option value="normal">
-                        Normal
+                    <option value="Low" <?= $selectedPriority === 'Low' ? 'selected' : '' ?>>
+                        Low
                     </option>
 
-                    <option value="medium">
+                    <option value="Medium" <?= $selectedPriority === 'Medium' ? 'selected' : '' ?>>
                         Medium
                     </option>
 
-                    <option value="high">
+                    <option value="High" <?= $selectedPriority === 'High' ? 'selected' : '' ?>>
                         High
                     </option>
 
-                    <option value="urgent">
+                    <option value="Urgent" <?= $selectedPriority === 'Urgent' ? 'selected' : '' ?>>
                         Urgent
                     </option>
 
@@ -530,7 +592,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     name="description"
                     rows="4"
                     placeholder="Describe the problem..."
-                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"></textarea>
+                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
 
             </div>
 

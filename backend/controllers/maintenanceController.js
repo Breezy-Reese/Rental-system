@@ -195,6 +195,7 @@ const updateMaintenance = async (req, res) => {
       "status",
       "unitId",
       "propertyId",
+      "response",
     ];
 
     allowedFields.forEach((field) => {
