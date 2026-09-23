@@ -17,11 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_id'])) {
     $status = trim($_POST['status'] ?? '');
     $response = trim($_POST['response'] ?? '');
 
+    error_log('ADMIN MAINT POST: id=' . $id . ' status=' . $status . ' response=' . $response);
+
     if ($id !== '') {
-        api_put('/maintenance/' . $id, [
+
+        $result = api_put('/maintenance/' . $id, [
             'status' => $status,
             'response' => $response,
         ]);
+
+        error_log('ADMIN MAINT API RESULT: ' . print_r($result, true));
     }
 
     header('Location: maintenance.php?updated=1');
@@ -170,7 +175,7 @@ require_once "../../includes/sidebar.php";
 
                             <button
                                 type="button"
-                                onclick="openRespond('<?= e($requestId) ?>', '<?= e($status) ?>', <?= json_encode($request['response'] ?? '') ?>)"
+                                onclick="openRespond('<?= e($requestId) ?>', '<?= e($status) ?>', <?= htmlspecialchars(json_encode($request['response'] ?? ''), ENT_QUOTES, 'UTF-8') ?>)"
                                 class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">
                                 Respond
                             </button>

@@ -187,6 +187,7 @@ const updateMaintenance = async (req, res) => {
     }
 
     const oldStatus = request.status;
+    const oldResponse = request.response;
 
     const allowedFields = [
       "issue",
@@ -241,24 +242,44 @@ const updateMaintenance = async (req, res) => {
 
     await request.save();
 
-    // Notify the customer when status changes.
+    const statusChanged = oldStatus !== request.status;
+    const responseChanged =
+      oldResponse !== request.response && !!request.response;
+
+    console.log(
+      "DEBUG maintenance update:",
+      "statusChanged=", statusChanged,
+      "responseChanged=", responseChanged,
+      "tenantId=", request.tenantId
+    );
+
+    // Notify the customer when status or response changes.
     if (
-      oldStatus !== request.status &&
+      (statusChanged || responseChanged) &&
       request.tenantId &&
       request.tenantId.userId
     ) {
+      let message = `Your maintenance request "${request.issue}" is now ${request.status}.`;
+
+      if (responseChanged) {
+        message += ` Response: ${request.response}`;
+      }
+
       await Notification.create({
         recipientRole: "Customer",
         recipientId: request.tenantId.userId,
         type: "maintenance_status_changed",
         title: "Maintenance Request Updated",
-        message: `Your maintenance request "${request.issue}" is now ${request.status}.`,
+        message,
         data: {
           maintenanceId: request._id,
           oldStatus,
           newStatus: request.status,
+          response: request.response || null,
         },
       });
+
+      console.log("DEBUG notification created for", request.tenantId.userId);
     }
 
     const updatedRequest =
