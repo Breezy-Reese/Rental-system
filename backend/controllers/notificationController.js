@@ -71,6 +71,13 @@ const getNotifications = async (req, res) => {
   try {
     const role = req.user.role;
 
+    console.log(
+      "DEBUG getNotifications: req.user.id=",
+      req.user.id,
+      "role=",
+      role
+    );
+
     const filter =
       role === "Administrator"
         ? {
@@ -85,6 +92,11 @@ const getNotifications = async (req, res) => {
             recipientId: req.user.id,
           };
 
+    console.log(
+      "DEBUG getNotifications filter:",
+      JSON.stringify(filter)
+    );
+
     const notifications = await Notification.find(filter)
       .populate(
         "senderId",
@@ -95,6 +107,18 @@ const getNotifications = async (req, res) => {
         "name email phone role"
       )
       .sort({ createdAt: -1 });
+
+    console.log(
+      "DEBUG getNotifications found:",
+      notifications.length,
+      "docs. Raw recipientIds in DB for Customer role:",
+    );
+
+    const allCustomerNotifs = await Notification.find({
+      recipientRole: "Customer",
+    }).select("recipientId title createdAt");
+
+    console.log(JSON.stringify(allCustomerNotifs, null, 2));
 
     /*
     | Add customer information for administrators
