@@ -18,6 +18,7 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const maintenanceRoutes = require("./routes/maintenanceRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const mpesaRoutes = require("./routes/mpesaRoutes");
 
 const app = express();
 
@@ -138,6 +139,12 @@ app.use("/api/maintenance", maintenanceRoutes);
 // ============================================================
 
 app.use("/api/notifications", notificationRoutes);
+
+// ============================================================
+// M-PESA
+// ============================================================
+
+app.use("/api/mpesa", mpesaRoutes);
 
 // ============================================================
 // 404
