@@ -1,4 +1,9 @@
+
+.git
+.gitignore
+node_modules
+vendor
 .env
-/vendor/
-/backend/storage/logs/*.log
-node_modules/
+.env.*
+*.log
+.DS_Store
