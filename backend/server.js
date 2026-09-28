@@ -7,6 +7,10 @@ const rateLimit = require("express-rate-limit");
 
 const connectDB = require("./config/db");
 
+// ============================================================
+// ROUTES
+// ============================================================
+
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const customerRoutes = require("./routes/customerRoutes");
@@ -20,9 +24,26 @@ const maintenanceRoutes = require("./routes/maintenanceRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const mpesaRoutes = require("./routes/mpesaRoutes");
 
+// ============================================================
+// APP
+// ============================================================
+
 const app = express();
 
 const PORT = process.env.PORT || 5000;
+
+// ============================================================
+// TRUST RENDER PROXY
+// ============================================================
+//
+// Render sits in front of your Node.js application and forwards
+// the client's IP using X-Forwarded-For.
+//
+// This is required by express-rate-limit.
+//
+// ============================================================
+
+app.set("trust proxy", 1);
 
 // ============================================================
 // DATABASE
@@ -36,29 +57,49 @@ connectDB();
 
 app.use(helmet());
 
+// ============================================================
+// CORS
+// ============================================================
+
+const clientUrl =
+  process.env.CLIENT_URL || "http://localhost:8000";
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:8000",
+    origin: clientUrl,
     credentials: true,
   })
 );
 
 // ============================================================
-// BODY PARSER
+// BODY PARSING
 // ============================================================
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+app.use(
+  express.urlencoded({
+    extended: true,
+  })
+);
 
 // ============================================================
-// RATE LIMIT
+// RATE LIMITER
 // ============================================================
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
+
   max: 200,
+
   standardHeaders: true,
+
   legacyHeaders: false,
+
+  message: {
+    success: false,
+    message: "Too many requests. Please try again later.",
+  },
 });
 
 app.use("/api", limiter);
@@ -141,13 +182,13 @@ app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 // ============================================================
-// M-PESA
+// MPESA
 // ============================================================
 
 app.use("/api/mpesa", mpesaRoutes);
 
 // ============================================================
-// 404
+// 404 HANDLER
 // ============================================================
 
 app.use((req, res) => {
@@ -159,7 +200,7 @@ app.use((req, res) => {
 });
 
 // ============================================================
-// ERROR HANDLER
+// GLOBAL ERROR HANDLER
 // ============================================================
 
 app.use((err, req, res, next) => {
@@ -177,6 +218,14 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(
-    `PropertyPro API running on http://localhost:${PORT}`
+    `PropertyPro API running on port ${PORT}`
+  );
+
+  console.log(
+    `Environment: ${process.env.NODE_ENV || "development"}`
+  );
+
+  console.log(
+    `Client URL: ${clientUrl}`
   );
 });
