@@ -1,196 +1,298 @@
-
 <?php
+
 /**
+ * ============================================================
  * PropertyPro API Connection
+ * ============================================================
  *
- * Local:      http://localhost:5000/api
- * Production: Set PROPERTYPRO_API_URL on the frontend hosting service:
- *             https://rental-system-hvnn.onrender.com/api
+ * LOCAL:
+ *   http://localhost:5000/api
+ *
+ * PRODUCTION:
+ *   https://rental-system-hvnn.onrender.com/api
+ *
+ * The application automatically detects the environment.
+ * ============================================================
  */
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
+
 /**
- * Configure the API base URL.
+ * ------------------------------------------------------------
+ * API BASE URL
+ * ------------------------------------------------------------
+ *
+ * Priority:
+ *
+ * 1. PROPERTYPRO_API_URL environment variable
+ * 2. Render production URL when running on Render
+ * 3. localhost for local development
+ *
+ * This prevents production from accidentally trying to call
+ * localhost:5000 inside the PHP container.
  */
-$propertyProApiUrl = getenv('PROPERTYPRO_API_URL');
+function get_api_base_url(): string
+{
+    $configuredUrl = getenv('PROPERTYPRO_API_URL');
 
-if ($propertyProApiUrl === false || trim($propertyProApiUrl) === '') {
-    $propertyProApiUrl = 'http://localhost:5000/api';
+    if ($configuredUrl !== false && trim($configuredUrl) !== '') {
+        return rtrim(trim($configuredUrl), '/');
+    }
+
+    // Render automatically provides RENDER=true.
+    if (getenv('RENDER') === 'true' || getenv('RENDER_SERVICE_ID')) {
+        return 'https://rental-system-hvnn.onrender.com/api';
+    }
+
+    return 'http://localhost:5000/api';
 }
 
-if (!defined('PROPERTYPRO_API_URL')) {
-    define('PROPERTYPRO_API_URL', rtrim(trim($propertyProApiUrl), '/'));
-}
 
 /**
- * Send an HTTP request to the PropertyPro backend.
+ * ------------------------------------------------------------
+ * API REQUEST
+ * ------------------------------------------------------------
  */
 function api_request(
     string $method,
     string $endpoint,
-    ?array $body = null,
-    ?string $token = null
+    ?array $data = null,
+    array $extraHeaders = []
 ): array {
-    $url = PROPERTYPRO_API_URL . '/' . ltrim($endpoint, '/');
+    $baseUrl = get_api_base_url();
 
-    if (!function_exists('curl_init')) {
-        return [
-            'success' => false,
-            'message' => 'PHP cURL is not enabled on the frontend server.',
-            'http_code' => 0,
-        ];
-    }
+    $endpoint = '/' . ltrim($endpoint, '/');
 
-    $ch = curl_init($url);
-
-    if ($ch === false) {
-        return [
-            'success' => false,
-            'message' => 'Unable to initialize the API connection.',
-            'http_code' => 0,
-        ];
-    }
+    $url = $baseUrl . $endpoint;
 
     $headers = [
         'Accept: application/json',
         'Content-Type: application/json',
     ];
 
-    if (!empty($token)) {
-        $headers[] = 'Authorization: Bearer ' . $token;
+    /*
+     * Add JWT token when available.
+     */
+    if (!empty($_SESSION['token'])) {
+        $headers[] = 'Authorization: Bearer ' . $_SESSION['token'];
+    }
+
+    /*
+     * Allow callers to provide additional headers.
+     */
+    foreach ($extraHeaders as $header) {
+        $headers[] = $header;
+    }
+
+    $ch = curl_init();
+
+    if ($ch === false) {
+        return [
+            'success' => false,
+            'message' => 'Unable to initialize API connection.',
+            'data' => null,
+            'status' => 0,
+            'url' => $url,
+        ];
     }
 
     $options = [
+        CURLOPT_URL => $url,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_CUSTOMREQUEST => strtoupper($method),
         CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_CONNECTTIMEOUT => 20,
-        CURLOPT_TIMEOUT => 90,
-        CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_SSL_VERIFYHOST => 2,
     ];
 
-    if ($body !== null) {
-        $jsonBody = json_encode(
-            $body,
-            JSON_UNESCAPED_SLASHES
-        );
+    if ($data !== null && strtoupper($method) !== 'GET') {
+        $jsonData = json_encode($data);
 
-        if ($jsonBody === false) {
+        if ($jsonData === false) {
             curl_close($ch);
 
             return [
                 'success' => false,
-                'message' => 'Unable to encode the API request.',
-                'http_code' => 0,
+                'message' => 'Failed to encode request data.',
+                'data' => null,
+                'status' => 0,
+                'url' => $url,
             ];
         }
 
-        $options[CURLOPT_POSTFIELDS] = $jsonBody;
+        $options[CURLOPT_POSTFIELDS] = $jsonData;
     }
 
     curl_setopt_array($ch, $options);
 
     $response = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
     $curlError = curl_error($ch);
+    $curlErrno = curl_errno($ch);
+
+    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
     curl_close($ch);
 
-    if ($response === false) {
+    /*
+     * cURL/network error.
+     */
+    if ($response === false || $curlErrno !== 0) {
+        error_log(
+            'PropertyPro API CURL ERROR: ' .
+            $curlError .
+            ' | URL: ' .
+            $url
+        );
+
         return [
             'success' => false,
-            'message' => 'Unable to connect to PropertyPro API.',
-            'http_code' => $httpCode,
-            'error' => $curlError ?: 'Unknown cURL error.',
+            'message' => 'Unable to connect to the PropertyPro API.',
+            'error' => $curlError,
+            'data' => null,
+            'status' => $httpStatus,
+            'url' => $url,
         ];
     }
 
+    /*
+     * Decode JSON response.
+     */
     $decoded = json_decode($response, true);
 
-    if (!is_array($decoded)) {
+    /*
+     * Invalid/non-JSON response.
+     */
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log(
+            'PropertyPro API INVALID JSON: ' .
+            json_last_error_msg() .
+            ' | HTTP: ' .
+            $httpStatus .
+            ' | URL: ' .
+            $url .
+            ' | RESPONSE: ' .
+            substr($response, 0, 1000)
+        );
+
         return [
             'success' => false,
-            'message' => 'The API returned a non-JSON response.',
-            'http_code' => $httpCode,
+            'message' => 'The API returned an invalid response.',
             'error' => json_last_error_msg(),
-            'raw_response' => $response,
+            'data' => $response,
+            'status' => $httpStatus,
+            'url' => $url,
         ];
     }
 
-    $decoded['http_code'] = $httpCode;
-
-    // Treat HTTP errors as unsuccessful even if the response
-    // body does not contain a success field.
-    if ($httpCode < 200 || $httpCode >= 300) {
-        $decoded['success'] = false;
-
-        if (empty($decoded['message'])) {
-            $decoded['message'] = 'The API request failed.';
-        }
+    /*
+     * Log failed API requests.
+     */
+    if ($httpStatus >= 400) {
+        error_log(
+            'PropertyPro API ERROR: ' .
+            'HTTP ' . $httpStatus .
+            ' | ' .
+            strtoupper($method) .
+            ' ' .
+            $url .
+            ' | RESPONSE: ' .
+            $response
+        );
     }
+
+    /*
+     * Normalize response.
+     */
+    if (!is_array($decoded)) {
+        $decoded = [
+            'success' => false,
+            'message' => 'Unexpected API response.',
+            'data' => $decoded,
+        ];
+    }
+
+    $decoded['status'] = $httpStatus;
+    $decoded['url'] = $url;
 
     return $decoded;
 }
 
-/**
- * Authentication helpers.
- */
-function api_token(): string
-{
-    return $_SESSION['propertypro_token'] ?? '';
-}
-
-function api_user(): array
-{
-    return $_SESSION['user'] ?? [];
-}
-
-function api_authenticated(): bool
-{
-    return api_token() !== '';
-}
 
 /**
- * GET request.
+ * ============================================================
+ * CONVENIENCE FUNCTIONS
+ * ============================================================
  */
-function api_get(string $endpoint): array
+
+function api_get(string $endpoint, array $query = []): array
 {
-    return api_request('GET', $endpoint, null, api_token());
+    if (!empty($query)) {
+        $endpoint .= '?' . http_build_query($query);
+    }
+
+    return api_request('GET', $endpoint);
 }
 
-/**
- * POST request.
- */
-function api_post(string $endpoint, array $body): array
+
+function api_post(string $endpoint, array $data = []): array
 {
-    return api_request('POST', $endpoint, $body, api_token());
+    return api_request('POST', $endpoint, $data);
 }
 
-/**
- * PUT request.
- */
-function api_put(string $endpoint, array $body): array
+
+function api_put(string $endpoint, array $data = []): array
 {
-    return api_request('PUT', $endpoint, $body, api_token());
+    return api_request('PUT', $endpoint, $data);
 }
 
-/**
- * PATCH request.
- */
-function api_patch(string $endpoint, array $body = []): array
+
+function api_patch(string $endpoint, array $data = []): array
 {
-    return api_request('PATCH', $endpoint, $body, api_token());
+    return api_request('PATCH', $endpoint, $data);
 }
 
-/**
- * DELETE request.
- */
-function api_delete(string $endpoint): array
+
+function api_delete(string $endpoint, array $data = []): array
 {
-    return api_request('DELETE', $endpoint, null, api_token());
+    return api_request('DELETE', $endpoint, $data);
 }
+
+
+/**
+ * ============================================================
+ * API BASE URL HELPER
+ * ============================================================
+ */
+function api_base_url(): string
+{
+    return get_api_base_url();
+}
+
+
+/**
+ * ============================================================
+ * DEBUG HELPER
+ * ============================================================
+ *
+ * Useful during development.
+ */
+function api_connection_info(): array
+{
+    return [
+        'base_url' => get_api_base_url(),
+        'environment' => (
+            getenv('RENDER') === 'true' ||
+            getenv('RENDER_SERVICE_ID')
+        )
+            ? 'production'
+            : 'local',
+    ];
+}
+
