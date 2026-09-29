@@ -1,63 +1,32 @@
-<?php
 
+<?php
 /**
- * ============================================================
  * PropertyPro API Connection
- * ============================================================
  *
- * LOCAL DEVELOPMENT:
- *   http://localhost:5000/api
- *
- * PRODUCTION / RENDER:
- *   Set the Render environment variable:
- *
- *   PROPERTYPRO_API_URL=https://rental-system-hvnn.onrender.com/api
- *
- * The same PHP code therefore works both locally and on Render.
- * ============================================================
+ * Local:      http://localhost:5000/api
+ * Production: Set PROPERTYPRO_API_URL on the frontend hosting service:
+ *             https://rental-system-hvnn.onrender.com/api
  */
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
-/*
-|--------------------------------------------------------------------------
-| API Base URL
-|--------------------------------------------------------------------------
-|
-| Render will use the PROPERTYPRO_API_URL environment variable.
-|
-| When developing locally, if the variable is not set, the application
-| automatically uses the local Node.js backend.
-|
-*/
-
+/**
+ * Configure the API base URL.
+ */
 $propertyProApiUrl = getenv('PROPERTYPRO_API_URL');
 
 if ($propertyProApiUrl === false || trim($propertyProApiUrl) === '') {
     $propertyProApiUrl = 'http://localhost:5000/api';
 }
 
-define(
-    'PROPERTYPRO_API_URL',
-    rtrim(trim($propertyProApiUrl), '/')
-);
-
+if (!defined('PROPERTYPRO_API_URL')) {
+    define('PROPERTYPRO_API_URL', rtrim(trim($propertyProApiUrl), '/'));
+}
 
 /**
- * ============================================================
- * API REQUEST
- * ============================================================
- *
- * Sends a request from the PHP frontend to the Node.js backend.
- *
- * @param string      $method
- * @param string      $endpoint
- * @param array|null  $body
- * @param string|null $token
- *
- * @return array
+ * Send an HTTP request to the PropertyPro backend.
  */
 function api_request(
     string $method,
@@ -65,24 +34,15 @@ function api_request(
     ?array $body = null,
     ?string $token = null
 ): array {
+    $url = PROPERTYPRO_API_URL . '/' . ltrim($endpoint, '/');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Build URL
-    |--------------------------------------------------------------------------
-    */
-
-    $url =
-        PROPERTYPRO_API_URL .
-        '/' .
-        ltrim($endpoint, '/');
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Initialize cURL
-    |--------------------------------------------------------------------------
-    */
+    if (!function_exists('curl_init')) {
+        return [
+            'success' => false,
+            'message' => 'PHP cURL is not enabled on the frontend server.',
+            'http_code' => 0,
+        ];
+    }
 
     $ch = curl_init($url);
 
@@ -94,82 +54,33 @@ function api_request(
         ];
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Request Headers
-    |--------------------------------------------------------------------------
-    */
-
     $headers = [
         'Accept: application/json',
         'Content-Type: application/json',
     ];
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Authorization
-    |--------------------------------------------------------------------------
-    |
-    | If the user is logged in, send the JWT token to the backend.
-    |
-    */
-
     if (!empty($token)) {
-        $headers[] =
-            'Authorization: Bearer ' . $token;
+        $headers[] = 'Authorization: Bearer ' . $token;
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | cURL Options
-    |--------------------------------------------------------------------------
-    */
-
-    curl_setopt_array($ch, [
+    $options = [
         CURLOPT_RETURNTRANSFER => true,
-
-        CURLOPT_CUSTOMREQUEST =>
-            strtoupper($method),
-
-        CURLOPT_HTTPHEADER =>
-            $headers,
-
-        /*
-        | Allow enough time for Render's free service to wake up.
-        */
-        CURLOPT_CONNECTTIMEOUT => 15,
-
-        CURLOPT_TIMEOUT => 60,
-
+        CURLOPT_CUSTOMREQUEST => strtoupper($method),
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_CONNECTTIMEOUT => 20,
+        CURLOPT_TIMEOUT => 90,
         CURLOPT_FOLLOWLOCATION => true,
-
-        /*
-        | HTTPS certificate verification.
-        */
         CURLOPT_SSL_VERIFYPEER => true,
-
         CURLOPT_SSL_VERIFYHOST => 2,
-    ]);
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Request Body
-    |--------------------------------------------------------------------------
-    */
+    ];
 
     if ($body !== null) {
-
         $jsonBody = json_encode(
             $body,
             JSON_UNESCAPED_SLASHES
         );
 
         if ($jsonBody === false) {
-
             curl_close($ch);
 
             return [
@@ -179,247 +90,107 @@ function api_request(
             ];
         }
 
-        curl_setopt(
-            $ch,
-            CURLOPT_POSTFIELDS,
-            $jsonBody
-        );
+        $options[CURLOPT_POSTFIELDS] = $jsonBody;
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Execute Request
-    |--------------------------------------------------------------------------
-    */
+    curl_setopt_array($ch, $options);
 
     $response = curl_exec($ch);
-
-    $httpCode = curl_getinfo(
-        $ch,
-        CURLINFO_HTTP_CODE
-    );
-
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
 
     curl_close($ch);
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Connection Error
-    |--------------------------------------------------------------------------
-    */
-
-    if ($response === false || $curlError !== '') {
-
+    if ($response === false) {
         return [
             'success' => false,
-
-            'message' =>
-                'Unable to connect to PropertyPro API.',
-
-            'http_code' =>
-                $httpCode ?: 0,
-
-            /*
-            | Useful while debugging.
-            | This does not expose passwords or JWT tokens.
-            */
-            'error' =>
-                $curlError !== ''
-                    ? $curlError
-                    : 'Unknown cURL error.',
+            'message' => 'Unable to connect to PropertyPro API.',
+            'http_code' => $httpCode,
+            'error' => $curlError ?: 'Unknown cURL error.',
         ];
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Decode JSON Response
-    |--------------------------------------------------------------------------
-    */
-
-    $decoded = json_decode(
-        $response,
-        true
-    );
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Invalid JSON Response
-    |--------------------------------------------------------------------------
-    */
+    $decoded = json_decode($response, true);
 
     if (!is_array($decoded)) {
-
         return [
             'success' => false,
-
-            'message' =>
-                'Invalid response received from PropertyPro API.',
-
-            'http_code' =>
-                $httpCode,
-
-            'raw_response' =>
-                $response,
+            'message' => 'The API returned a non-JSON response.',
+            'http_code' => $httpCode,
+            'error' => json_last_error_msg(),
+            'raw_response' => $response,
         ];
     }
 
+    $decoded['http_code'] = $httpCode;
 
-    /*
-    |--------------------------------------------------------------------------
-    | Add HTTP Status Code
-    |--------------------------------------------------------------------------
-    */
+    // Treat HTTP errors as unsuccessful even if the response
+    // body does not contain a success field.
+    if ($httpCode < 200 || $httpCode >= 300) {
+        $decoded['success'] = false;
 
-    $decoded['http_code'] =
-        $httpCode;
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Return API Response
-    |--------------------------------------------------------------------------
-    */
+        if (empty($decoded['message'])) {
+            $decoded['message'] = 'The API request failed.';
+        }
+    }
 
     return $decoded;
 }
 
-
 /**
- * ============================================================
- * AUTHENTICATION HELPERS
- * ============================================================
- */
-
-
-/**
- * Get the currently stored JWT token.
+ * Authentication helpers.
  */
 function api_token(): string
 {
-    return
-        $_SESSION['propertypro_token']
-        ?? '';
+    return $_SESSION['propertypro_token'] ?? '';
 }
 
-
-/**
- * Get the currently logged-in user.
- */
 function api_user(): array
 {
-    return
-        $_SESSION['user']
-        ?? [];
+    return $_SESSION['user'] ?? [];
 }
 
-
-/**
- * Check whether a JWT token exists.
- */
 function api_authenticated(): bool
 {
     return api_token() !== '';
 }
 
-
 /**
- * ============================================================
- * GET REQUEST
- * ============================================================
+ * GET request.
  */
-
-function api_get(
-    string $endpoint
-): array {
-
-    return api_request(
-        'GET',
-        $endpoint,
-        null,
-        api_token()
-    );
+function api_get(string $endpoint): array
+{
+    return api_request('GET', $endpoint, null, api_token());
 }
 
-
 /**
- * ============================================================
- * POST REQUEST
- * ============================================================
+ * POST request.
  */
-
-function api_post(
-    string $endpoint,
-    array $body
-): array {
-
-    return api_request(
-        'POST',
-        $endpoint,
-        $body,
-        api_token()
-    );
+function api_post(string $endpoint, array $body): array
+{
+    return api_request('POST', $endpoint, $body, api_token());
 }
 
-
 /**
- * ============================================================
- * PUT REQUEST
- * ============================================================
+ * PUT request.
  */
-
-function api_put(
-    string $endpoint,
-    array $body
-): array {
-
-    return api_request(
-        'PUT',
-        $endpoint,
-        $body,
-        api_token()
-    );
+function api_put(string $endpoint, array $body): array
+{
+    return api_request('PUT', $endpoint, $body, api_token());
 }
 
-
 /**
- * ============================================================
- * PATCH REQUEST
- * ============================================================
+ * PATCH request.
  */
-
-function api_patch(
-    string $endpoint,
-    array $body = []
-): array {
-
-    return api_request(
-        'PATCH',
-        $endpoint,
-        $body,
-        api_token()
-    );
+function api_patch(string $endpoint, array $body = []): array
+{
+    return api_request('PATCH', $endpoint, $body, api_token());
 }
 
-
 /**
- * ============================================================
- * DELETE REQUEST
- * ============================================================
+ * DELETE request.
  */
-
-function api_delete(
-    string $endpoint
-): array {
-
-    return api_request(
-        'DELETE',
-        $endpoint,
-        null,
-        api_token()
-    );
+function api_delete(string $endpoint): array
+{
+    return api_request('DELETE', $endpoint, null, api_token());
 }
