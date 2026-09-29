@@ -42,53 +42,159 @@ function current_role(): string
     return $_SESSION['user']['role'] ?? '';
 }
 
+/*
+|--------------------------------------------------------------------------
+| Role Helpers
+|--------------------------------------------------------------------------
+*/
+
+function is_admin(): bool
+{
+    return current_role() === 'Administrator';
+}
+
+function is_customer(): bool
+{
+    return current_role() === 'Customer';
+}
+
+/*
+|--------------------------------------------------------------------------
+| Require Login
+|--------------------------------------------------------------------------
+*/
+
 function require_login(): void
 {
     if (!is_logged_in()) {
-        header('Location: ../login.php');
+        header('Location: /login.php');
         exit;
     }
 }
 
-function require_role(string $role): void
+/*
+|--------------------------------------------------------------------------
+| Require Administrator
+|--------------------------------------------------------------------------
+|
+| Only users whose role is exactly "Administrator" can access
+| administrator pages.
+|
+| Customers are sent to the customer dashboard.
+|
+*/
+
+function require_admin(): void
 {
     require_login();
 
-    if (current_role() !== $role) {
-        if (current_role() === 'Administrator') {
-            header('Location: admin/dashboard.php');
-        } elseif (current_role() === 'Customer') {
-            header('Location: customer/dashboard.php');
+    if (!is_admin()) {
+        if (is_customer()) {
+            header('Location: /customer/dashboard.php');
         } else {
-            header('Location: login.php');
+            logout_user();
+            header('Location: /login.php');
         }
 
         exit;
     }
 }
 
-function redirect_by_role(): void
+/*
+|--------------------------------------------------------------------------
+| Require Customer
+|--------------------------------------------------------------------------
+|
+| Only users whose role is exactly "Customer" can access
+| customer pages.
+|
+| Administrators are sent to the administrator dashboard.
+|
+*/
+
+function require_customer(): void
 {
-    if (!is_logged_in()) {
-        header('Location: login.php');
+    require_login();
+
+    if (!is_customer()) {
+        if (is_admin()) {
+            header('Location: /admin/dashboard.php');
+        } else {
+            logout_user();
+            header('Location: /login.php');
+        }
+
+        exit;
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Generic Role Requirement
+|--------------------------------------------------------------------------
+*/
+
+function require_role(string $role): void
+{
+    require_login();
+
+    if (current_role() === $role) {
+        return;
+    }
+
+    if (is_admin()) {
+        header('Location: /admin/dashboard.php');
         exit;
     }
 
-    if (current_role() === 'Administrator') {
-        header('Location: admin/dashboard.php');
-        exit;
-    }
-
-    if (current_role() === 'Customer') {
-        header('Location: customer/dashboard.php');
+    if (is_customer()) {
+        header('Location: /customer/dashboard.php');
         exit;
     }
 
     logout_user();
 
-    header('Location: login.php');
+    header('Location: /login.php');
     exit;
 }
+
+/*
+|--------------------------------------------------------------------------
+| Redirect According To Role
+|--------------------------------------------------------------------------
+*/
+
+function redirect_by_role(): void
+{
+    if (!is_logged_in()) {
+        header('Location: /login.php');
+        exit;
+    }
+
+    if (is_admin()) {
+        header('Location: /admin/dashboard.php');
+        exit;
+    }
+
+    if (is_customer()) {
+        header('Location: /customer/dashboard.php');
+        exit;
+    }
+
+    /*
+     * Unknown role = destroy session and require login again.
+     */
+    logout_user();
+
+    header('Location: /login.php');
+    exit;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Logout
+|--------------------------------------------------------------------------
+*/
 
 function logout_user(): void
 {
