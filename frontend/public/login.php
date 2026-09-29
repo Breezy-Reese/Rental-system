@@ -87,9 +87,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } else {
 
+            /*
+             * TEMPORARY DEBUG - shows full API response.
+             * Revert to the simple message once the login
+             * issue is diagnosed.
+             */
             $error =
-                $result['message']
-                ?? 'Invalid email or password.';
+                ($result['message'] ?? 'Invalid email or password.')
+                . ' | FULL: ' . json_encode($result);
         }
     }
 }
