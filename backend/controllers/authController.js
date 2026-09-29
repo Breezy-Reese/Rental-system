@@ -2,18 +2,15 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-// ============================================================
-// CREATE JWT TOKEN
-// ============================================================
-
+/**
+ * ============================================================
+ * CREATE JWT TOKEN
+ * ============================================================
+ */
 const createToken = (user) => {
-  if (!process.env.JWT_SECRET) {
-    throw new Error("JWT_SECRET is not configured.");
-  }
-
   return jwt.sign(
     {
-      id: user._id.toString(),
+      id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
@@ -25,39 +22,32 @@ const createToken = (user) => {
   );
 };
 
-// ============================================================
-// FORMAT USER
-// ============================================================
+/**
+ * ============================================================
+ * FORMAT USER RESPONSE
+ * ============================================================
+ */
+const formatUser = (user) => {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    status: user.status,
+  };
+};
 
-const formatUser = (user) => ({
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  phone: user.phone || "",
-  role: user.role,
-  status: user.status,
-});
-
-// ============================================================
-// LOGIN
-// POST /api/auth/login
-// ============================================================
-
+/**
+ * ============================================================
+ * LOGIN
+ * POST /api/auth/login
+ * ============================================================
+ */
 const login = async (req, res) => {
   try {
-    const email =
-      typeof req.body.email === "string"
-        ? req.body.email.trim().toLowerCase()
-        : "";
-
-    const password =
-      typeof req.body.password === "string"
-        ? req.body.password
-        : "";
-
-    // ----------------------------------------------------------
-    // Validate input
-    // ----------------------------------------------------------
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -66,13 +56,7 @@ const login = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------------------
-    // Find user
-    // ----------------------------------------------------------
-
-    const user = await User.findOne({
-      email: email,
-    });
+    const user = await User.findOne({ email });
 
     if (!user) {
       return res.status(401).json({
@@ -81,25 +65,14 @@ const login = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------------------
-    // Check account status
-    // ----------------------------------------------------------
-
-    if (user.status !== "Active") {
+    if (user.status && user.status !== "Active") {
       return res.status(403).json({
         success: false,
         message: "Your account is inactive. Please contact the administrator.",
       });
     }
 
-    // ----------------------------------------------------------
-    // Check password
-    // ----------------------------------------------------------
-
-    const passwordMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
       return res.status(401).json({
@@ -108,31 +81,30 @@ const login = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------------------
-    // Create token
-    // ----------------------------------------------------------
-
     const token = createToken(user);
+    const formattedUser = formatUser(user);
 
-    // ----------------------------------------------------------
-    // Login successful
-    // ----------------------------------------------------------
+    let redirect = "/customer/dashboard.php";
+
+    if (
+      user.role === "Administrator" ||
+      user.role === "Admin" ||
+      user.role === "admin"
+    ) {
+      redirect = "/admin/dashboard.php";
+    }
 
     return res.status(200).json({
       success: true,
       message: "Login successful.",
       data: {
         token,
-        user: formatUser(user),
-
-        redirect:
-          user.role === "Administrator"
-            ? "/admin/dashboard.php"
-            : "/customer/dashboard.php",
+        user: formattedUser,
+        redirect,
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("LOGIN ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -141,37 +113,29 @@ const login = async (req, res) => {
   }
 };
 
-// ============================================================
-// REGISTER
-// POST /api/auth/register
-// ============================================================
-
+/**
+ * ============================================================
+ * REGISTER
+ * POST /api/auth/register
+ *
+ * Supports:
+ *   - Customer
+ *   - Administrator
+ * ============================================================
+ */
 const register = async (req, res) => {
   try {
-    const name =
-      typeof req.body.name === "string"
-        ? req.body.name.trim()
-        : "";
+    const name = req.body.name?.trim();
+    const email = req.body.email?.trim().toLowerCase();
+    const password = req.body.password;
+    const phone = req.body.phone?.trim() || "";
+    const requestedRole = req.body.role?.trim();
 
-    const email =
-      typeof req.body.email === "string"
-        ? req.body.email.trim().toLowerCase()
-        : "";
-
-    const password =
-      typeof req.body.password === "string"
-        ? req.body.password
-        : "";
-
-    const phone =
-      typeof req.body.phone === "string"
-        ? req.body.phone.trim()
-        : "";
-
-    // ----------------------------------------------------------
-    // Validate required fields
-    // ----------------------------------------------------------
-
+    /**
+     * ----------------------------------------------------------
+     * VALIDATE BASIC FIELDS
+     * ----------------------------------------------------------
+     */
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -179,24 +143,58 @@ const register = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------------------
-    // Validate password
-    // ----------------------------------------------------------
+    /**
+     * ----------------------------------------------------------
+     * VALIDATE EMAIL
+     * ----------------------------------------------------------
+     */
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (password.length < 6) {
-      return res.status(422).json({
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
         success: false,
-        message: "Password must contain at least 6 characters.",
+        message: "Please provide a valid email address.",
       });
     }
 
-    // ----------------------------------------------------------
-    // Check email
-    // ----------------------------------------------------------
+    /**
+     * ----------------------------------------------------------
+     * VALIDATE PASSWORD
+     * ----------------------------------------------------------
+     */
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long.",
+      });
+    }
 
-    const existingUser = await User.findOne({
-      email: email,
-    });
+    /**
+     * ----------------------------------------------------------
+     * VALIDATE ROLE
+     *
+     * Only these two roles are allowed:
+     *   Customer
+     *   Administrator
+     *
+     * If no role is supplied, Customer is used as the default.
+     * ----------------------------------------------------------
+     */
+    const role = requestedRole || "Customer";
+
+    if (!["Customer", "Administrator"].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role selected. Choose Customer or Administrator.",
+      });
+    }
+
+    /**
+     * ----------------------------------------------------------
+     * CHECK IF EMAIL ALREADY EXISTS
+     * ----------------------------------------------------------
+     */
+    const existingUser = await User.findOne({ email });
 
     if (existingUser) {
       return res.status(409).json({
@@ -205,51 +203,77 @@ const register = async (req, res) => {
       });
     }
 
-    // ----------------------------------------------------------
-    // Hash password
-    // ----------------------------------------------------------
+    /**
+     * ----------------------------------------------------------
+     * HASH PASSWORD
+     * ----------------------------------------------------------
+     */
+    const hashedPassword = await bcrypt.hash(password, 12);
 
-    const hashedPassword = await bcrypt.hash(
-      password,
-      12
-    );
-
-    // ----------------------------------------------------------
-    // Create customer account
-    // ----------------------------------------------------------
-
+    /**
+     * ----------------------------------------------------------
+     * CREATE USER
+     * ----------------------------------------------------------
+     */
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
       phone,
-      role: "Customer",
+      role,
       status: "Active",
     });
 
-    // ----------------------------------------------------------
-    // Create login token
-    // ----------------------------------------------------------
-
+    /**
+     * ----------------------------------------------------------
+     * CREATE TOKEN
+     *
+     * User is automatically logged in after registration.
+     * ----------------------------------------------------------
+     */
     const token = createToken(user);
+    const formattedUser = formatUser(user);
 
-    // ----------------------------------------------------------
-    // Return account
-    // ----------------------------------------------------------
+    /**
+     * ----------------------------------------------------------
+     * ROLE-BASED REDIRECT
+     * ----------------------------------------------------------
+     */
+    let redirect = "/customer/dashboard.php";
+
+    if (role === "Administrator") {
+      redirect = "/admin/dashboard.php";
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Registration successful.",
+      message: "Account created successfully.",
       data: {
         token,
-        user: formatUser(user),
-        redirect: "/customer/dashboard.php",
+        user: formattedUser,
+        redirect,
       },
     });
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error("REGISTER ERROR:", error);
 
-    // Handle duplicate email race condition
+    /**
+     * Mongoose validation error
+     */
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map(
+        (item) => item.message
+      );
+
+      return res.status(400).json({
+        success: false,
+        message: messages.join(" "),
+      });
+    }
+
+    /**
+     * Duplicate email/index error
+     */
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -264,15 +288,15 @@ const register = async (req, res) => {
   }
 };
 
-// ============================================================
-// CURRENT USER
-// GET /api/auth/me
-// ============================================================
-
+/**
+ * ============================================================
+ * GET CURRENT USER
+ * GET /api/auth/me
+ * ============================================================
+ */
 const me = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .select("-password");
+    const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
       return res.status(404).json({
@@ -288,7 +312,7 @@ const me = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get current user error:", error);
+    console.error("ME ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -297,22 +321,24 @@ const me = async (req, res) => {
   }
 };
 
-// ============================================================
-// LOGOUT
-// POST /api/auth/logout
-// ============================================================
-
+/**
+ * ============================================================
+ * LOGOUT
+ * POST /api/auth/logout
+ * ============================================================
+ */
 const logout = async (req, res) => {
   return res.status(200).json({
     success: true,
-    message: "Logout successful.",
+    message: "Logged out successfully.",
   });
 };
 
-// ============================================================
-// EXPORTS
-// ============================================================
-
+/**
+ * ============================================================
+ * EXPORTS
+ * ============================================================
+ */
 module.exports = {
   login,
   register,
