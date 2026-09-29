@@ -24,7 +24,7 @@ const createToken = (user) => {
 
 /**
  * ============================================================
- * FORMAT USER RESPONSE
+ * FORMAT USER
  * ============================================================
  */
 const formatUser = (user) => {
@@ -68,11 +68,15 @@ const login = async (req, res) => {
     if (user.status && user.status !== "Active") {
       return res.status(403).json({
         success: false,
-        message: "Your account is inactive. Please contact the administrator.",
+        message:
+          "Your account is inactive. Please contact the administrator.",
       });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!passwordMatch) {
       return res.status(401).json({
@@ -118,9 +122,10 @@ const login = async (req, res) => {
  * REGISTER
  * POST /api/auth/register
  *
- * Supports:
- *   - Customer
- *   - Administrator
+ * IMPORTANT:
+ * Public registration ALWAYS creates a Customer.
+ *
+ * Administrator accounts must be created separately.
  * ============================================================
  */
 const register = async (req, res) => {
@@ -129,7 +134,6 @@ const register = async (req, res) => {
     const email = req.body.email?.trim().toLowerCase();
     const password = req.body.password;
     const phone = req.body.phone?.trim() || "";
-    const requestedRole = req.body.role?.trim();
 
     /**
      * ----------------------------------------------------------
@@ -171,27 +175,7 @@ const register = async (req, res) => {
 
     /**
      * ----------------------------------------------------------
-     * VALIDATE ROLE
-     *
-     * Only these two roles are allowed:
-     *   Customer
-     *   Administrator
-     *
-     * If no role is supplied, Customer is used as the default.
-     * ----------------------------------------------------------
-     */
-    const role = requestedRole || "Customer";
-
-    if (!["Customer", "Administrator"].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid role selected. Choose Customer or Administrator.",
-      });
-    }
-
-    /**
-     * ----------------------------------------------------------
-     * CHECK IF EMAIL ALREADY EXISTS
+     * CHECK EXISTING EMAIL
      * ----------------------------------------------------------
      */
     const existingUser = await User.findOne({ email });
@@ -212,7 +196,10 @@ const register = async (req, res) => {
 
     /**
      * ----------------------------------------------------------
-     * CREATE USER
+     * CREATE CUSTOMER
+     *
+     * DO NOT accept role from the registration form.
+     * Every public registration is a Customer.
      * ----------------------------------------------------------
      */
     const user = await User.create({
@@ -220,46 +207,30 @@ const register = async (req, res) => {
       email,
       password: hashedPassword,
       phone,
-      role,
+      role: "Customer",
       status: "Active",
     });
 
     /**
      * ----------------------------------------------------------
-     * CREATE TOKEN
-     *
-     * User is automatically logged in after registration.
+     * AUTOMATIC LOGIN AFTER REGISTRATION
      * ----------------------------------------------------------
      */
     const token = createToken(user);
     const formattedUser = formatUser(user);
 
-    /**
-     * ----------------------------------------------------------
-     * ROLE-BASED REDIRECT
-     * ----------------------------------------------------------
-     */
-    let redirect = "/customer/dashboard.php";
-
-    if (role === "Administrator") {
-      redirect = "/admin/dashboard.php";
-    }
-
     return res.status(201).json({
       success: true,
-      message: "Account created successfully.",
+      message: "Customer account created successfully.",
       data: {
         token,
         user: formattedUser,
-        redirect,
+        redirect: "/customer/dashboard.php",
       },
     });
   } catch (error) {
     console.error("REGISTER ERROR:", error);
 
-    /**
-     * Mongoose validation error
-     */
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map(
         (item) => item.message
@@ -271,9 +242,6 @@ const register = async (req, res) => {
       });
     }
 
-    /**
-     * Duplicate email/index error
-     */
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -290,7 +258,7 @@ const register = async (req, res) => {
 
 /**
  * ============================================================
- * GET CURRENT USER
+ * CURRENT USER
  * GET /api/auth/me
  * ============================================================
  */
