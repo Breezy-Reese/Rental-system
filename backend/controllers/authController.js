@@ -3,9 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 /**
- * ============================================================
- * CREATE JWT TOKEN
- * ============================================================
+ * Create JWT token
  */
 const createToken = (user) => {
   return jwt.sign(
@@ -23,40 +21,36 @@ const createToken = (user) => {
 };
 
 /**
- * ============================================================
- * FORMAT USER RESPONSE
- * ============================================================
+ * Format user data returned to the frontend
  */
-const formatUser = (user) => {
-  return {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    status: user.status,
-  };
-};
+const formatUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone || "",
+  role: user.role,
+  status: user.status,
+});
 
 /**
- * ============================================================
  * LOGIN
- * POST /api/auth/login
- * ============================================================
  */
 const login = async (req, res) => {
   try {
-    const email = req.body.email?.trim().toLowerCase();
-    const password = req.body.password;
+    const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required.",
+        message: "Email and password are required",
       });
     }
 
-    const user = await User.findOne({ email });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -86,17 +80,13 @@ const login = async (req, res) => {
 
     let redirect = "/customer/dashboard.php";
 
-    if (
-      user.role === "Administrator" ||
-      user.role === "Admin" ||
-      user.role === "admin"
-    ) {
+    if (user.role === "Administrator") {
       redirect = "/admin/dashboard.php";
     }
 
     return res.status(200).json({
       success: true,
-      message: "Login successful.",
+      message: "Login successful",
       data: {
         token,
         user: formattedUser,
@@ -104,195 +94,141 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+    console.error("Login error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Server error during login.",
+      message: "Server error during login",
     });
   }
 };
 
 /**
- * ============================================================
- * REGISTER
- * POST /api/auth/register
+ * PUBLIC REGISTRATION
  *
- * Supports:
- *   - Customer
- *   - Administrator
- * ============================================================
+ * IMPORTANT:
+ * Public registration ALWAYS creates a Customer.
+ *
+ * We intentionally do NOT accept req.body.role.
+ * This prevents someone from submitting:
+ *
+ * role: "Administrator"
+ *
+ * and creating an administrator account.
  */
 const register = async (req, res) => {
   try {
-    const name = req.body.name?.trim();
-    const email = req.body.email?.trim().toLowerCase();
-    const password = req.body.password;
-    const phone = req.body.phone?.trim() || "";
-    const requestedRole = req.body.role?.trim();
+    const {
+      name,
+      email,
+      phone,
+      password,
+      confirmPassword,
+    } = req.body;
 
-    /**
-     * ----------------------------------------------------------
-     * VALIDATE BASIC FIELDS
-     * ----------------------------------------------------------
-     */
+    // Required fields
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Name, email and password are required.",
+        message: "Name, email and password are required",
       });
     }
 
-    /**
-     * ----------------------------------------------------------
-     * VALIDATE EMAIL
-     * ----------------------------------------------------------
-     */
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email)) {
+    // Confirm password when supplied by the frontend
+    if (
+      confirmPassword !== undefined &&
+      password !== confirmPassword
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Please provide a valid email address.",
+        message: "Passwords do not match",
       });
     }
 
-    /**
-     * ----------------------------------------------------------
-     * VALIDATE PASSWORD
-     * ----------------------------------------------------------
-     */
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 6 characters long.",
+        message: "Password must be at least 6 characters",
       });
     }
 
-    /**
-     * ----------------------------------------------------------
-     * VALIDATE ROLE
-     *
-     * Only these two roles are allowed:
-     *   Customer
-     *   Administrator
-     *
-     * If no role is supplied, Customer is used as the default.
-     * ----------------------------------------------------------
-     */
-    const role = requestedRole || "Customer";
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (!["Customer", "Administrator"].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid role selected. Choose Customer or Administrator.",
-      });
-    }
-
-    /**
-     * ----------------------------------------------------------
-     * CHECK IF EMAIL ALREADY EXISTS
-     * ----------------------------------------------------------
-     */
-    const existingUser = await User.findOne({ email });
+    // Check whether email already exists
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: "An account with this email already exists.",
+        message: "An account with this email already exists",
       });
     }
 
-    /**
-     * ----------------------------------------------------------
-     * HASH PASSWORD
-     * ----------------------------------------------------------
-     */
-    const hashedPassword = await bcrypt.hash(password, 12);
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     /**
-     * ----------------------------------------------------------
-     * CREATE USER
-     * ----------------------------------------------------------
+     * IMPORTANT:
+     * Never take the role from req.body.
+     *
+     * Every public registration is a Customer.
      */
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: normalizedEmail,
+      phone: phone ? phone.trim() : "",
       password: hashedPassword,
-      phone,
-      role,
+      role: "Customer",
       status: "Active",
     });
 
-    /**
-     * ----------------------------------------------------------
-     * CREATE TOKEN
-     *
-     * User is automatically logged in after registration.
-     * ----------------------------------------------------------
-     */
     const token = createToken(user);
     const formattedUser = formatUser(user);
 
-    /**
-     * ----------------------------------------------------------
-     * ROLE-BASED REDIRECT
-     * ----------------------------------------------------------
-     */
-    let redirect = "/customer/dashboard.php";
-
-    if (role === "Administrator") {
-      redirect = "/admin/dashboard.php";
-    }
-
     return res.status(201).json({
       success: true,
-      message: "Account created successfully.",
+      message: "Registration successful",
       data: {
         token,
         user: formattedUser,
-        redirect,
+        redirect: "/customer/dashboard.php",
       },
     });
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
+    console.error("Registration error:", error);
 
-    /**
-     * Mongoose validation error
-     */
-    if (error.name === "ValidationError") {
-      const messages = Object.values(error.errors).map(
-        (item) => item.message
-      );
-
-      return res.status(400).json({
-        success: false,
-        message: messages.join(" "),
-      });
-    }
-
-    /**
-     * Duplicate email/index error
-     */
+    // Handle duplicate email race condition
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "An account with this email already exists.",
+        message: "An account with this email already exists",
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Server error during registration.",
+      message: "Server error during registration",
     });
   }
 };
 
 /**
- * ============================================================
- * GET CURRENT USER
- * GET /api/auth/me
- * ============================================================
+ * LOGOUT
+ *
+ * JWT authentication is stateless, so the PHP frontend
+ * removes the token/session on logout.
+ */
+const logout = async (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: "Logout successful",
+  });
+};
+
+/**
+ * CURRENT USER
  */
 const me = async (req, res) => {
   try {
@@ -301,7 +237,7 @@ const me = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found.",
+        message: "User not found",
       });
     }
 
@@ -312,36 +248,19 @@ const me = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("ME ERROR:", error);
+    console.error("Get current user error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Server error.",
+      message: "Server error",
     });
   }
 };
 
-/**
- * ============================================================
- * LOGOUT
- * POST /api/auth/logout
- * ============================================================
- */
-const logout = async (req, res) => {
-  return res.status(200).json({
-    success: true,
-    message: "Logged out successfully.",
-  });
-};
-
-/**
- * ============================================================
- * EXPORTS
- * ============================================================
- */
 module.exports = {
   login,
   register,
-  me,
   logout,
+  me,
 };
+
