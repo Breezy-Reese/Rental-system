@@ -1,593 +1,344 @@
 <?php
 
-require_once "../includes/auth.php";
-require_once "../includes/api.php";
+session_start();
 
-/**
- * ============================================================
- * REGISTRATION PAGE
- * ============================================================
- */
+require_once __DIR__ . "/../includes/api.php";
 
-if (is_logged_in()) {
-    redirect_by_role();
+/*
+|--------------------------------------------------------------------------
+| Redirect already logged-in users
+|--------------------------------------------------------------------------
+*/
+if (!empty($_SESSION["user"])) {
+    $role = $_SESSION["user"]["role"] ?? "";
+
+    if ($role === "Administrator") {
+        header("Location: admin/dashboard.php");
+        exit;
+    }
+
+    if ($role === "Customer") {
+        header("Location: customer/dashboard.php");
+        exit;
+    }
 }
 
 $error = "";
-$success = "";
 
-$firstName = "";
-$lastName = "";
-$email = "";
-$phone = "";
-$role = "Customer";
-
-/**
- * ============================================================
- * HANDLE REGISTRATION
- * ============================================================
- */
+/*
+|--------------------------------------------------------------------------
+| Handle Registration
+|--------------------------------------------------------------------------
+*/
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $firstName = trim($_POST["first_name"] ?? "");
-    $lastName = trim($_POST["last_name"] ?? "");
+    $name = trim($_POST["name"] ?? "");
     $email = trim($_POST["email"] ?? "");
     $phone = trim($_POST["phone"] ?? "");
     $password = $_POST["password"] ?? "";
-    $passwordConfirmation = $_POST["password_confirmation"] ?? "";
-    $role = trim($_POST["role"] ?? "Customer");
+    $confirmPassword = $_POST["confirmPassword"] ?? "";
 
-    /**
-     * ----------------------------------------------------------
-     * VALIDATION
-     * ----------------------------------------------------------
+    /*
+     * Basic validation
      */
-
-    if ($firstName === "" || $lastName === "") {
-        $error = "Please enter your first and last name.";
-    } elseif ($email === "" || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    if ($name === "") {
+        $error = "Please enter your full name.";
+    } elseif ($email === "") {
+        $error = "Please enter your email address.";
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
     } elseif ($password === "") {
-        $error = "Please enter a password.";
+        $error = "Please create a password.";
     } elseif (strlen($password) < 6) {
-        $error = "Password must be at least 6 characters long.";
-    } elseif ($password !== $passwordConfirmation) {
+        $error = "Password must be at least 6 characters.";
+    } elseif ($confirmPassword === "") {
+        $error = "Please confirm your password.";
+    } elseif ($password !== $confirmPassword) {
         $error = "Passwords do not match.";
-    } elseif (!in_array($role, ["Customer", "Administrator"], true)) {
-        $error = "Please select a valid account role.";
-    }
+    } else {
 
-    /**
-     * ----------------------------------------------------------
-     * SEND TO NODE.JS API
-     * ----------------------------------------------------------
-     */
-    if ($error === "") {
+        /*
+         * IMPORTANT:
+         *
+         * There is intentionally NO role value here.
+         *
+         * The backend automatically creates this account
+         * as a Customer.
+         */
+        $response = api_post("/auth/register", [
+            "name" => $name,
+            "email" => $email,
+            "phone" => $phone,
+            "password" => $password,
+            "confirmPassword" => $confirmPassword
+        ]);
 
-        $name = trim($firstName . " " . $lastName);
+        /*
+         * Registration successful
+         */
+        if (
+            !empty($response["success"]) &&
+            !empty($response["data"])
+        ) {
+            $_SESSION["propertypro_token"] =
+                $response["data"]["token"] ?? "";
 
-        $result = api_request(
-            "POST",
-            "/auth/register",
-            [
-                "name" => $name,
-                "email" => $email,
-                "password" => $password,
-                "phone" => $phone,
-                "role" => $role,
-            ]
-        );
+            $_SESSION["user"] =
+                $response["data"]["user"] ?? [];
 
-        if (!empty($result["success"])) {
-
-            $data = $result["data"] ?? [];
-            $token = $data["token"] ?? null;
-            $user = $data["user"] ?? null;
-
-            if ($token && $user) {
-
-                /**
-                 * Store authentication session.
-                 */
-                $_SESSION["propertypro_token"] = $token;
-                $_SESSION["user"] = $user;
-
-                /**
-                 * Normalize role.
-                 */
-                $userRole = $user["role"] ?? $role;
-
-                if (
-                    strtolower($userRole) === "admin" ||
-                    strtolower($userRole) === "administrator"
-                ) {
-                    $userRole = "Administrator";
-                } else {
-                    $userRole = "Customer";
-                }
-
-                $_SESSION["user"]["role"] = $userRole;
-
-                /**
-                 * Redirect according to role.
-                 */
-                redirect_by_role();
-
-                exit;
-            }
-
-            $error = "Account was created, but the login session could not be started.";
-
-        } else {
-
-            $error = $result["message"] ?? "Registration failed.";
+            /*
+             * Public registration is Customer-only.
+             */
+            header("Location: customer/dashboard.php");
+            exit;
         }
+
+        /*
+         * Registration failed
+         */
+        $error = $response["message"] ??
+            "Registration failed. Please try again.";
     }
 }
 
-$pageTitle = "Create Account";
+$pageTitle = "Create Customer Account";
 
+require_once __DIR__ . "/../includes/header.php";
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
+<div class="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-10">
 
-<head>
+    <div class="w-full max-w-md">
 
-    <meta charset="UTF-8">
+        <!-- Brand -->
+        <div class="text-center mb-8">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+            <a
+                href="index.php"
+                class="inline-block text-3xl font-bold text-indigo-600"
+            >
+                PropertyPro
+            </a>
 
-    <title>
-        <?= htmlspecialchars($pageTitle) ?> | PropertyPro
-    </title>
+            <h1 class="mt-4 text-2xl font-bold text-slate-900">
+                Create Your Account
+            </h1>
 
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            50: "#eef2ff",
-                            100: "#e0e7ff",
-                            200: "#c7d2fe",
-                            300: "#a5b4fc",
-                            400: "#818cf8",
-                            500: "#6366f1",
-                            600: "#4f46e5",
-                            700: "#4338ca",
-                            800: "#3730a3",
-                            900: "#312e81"
-                        }
-                    }
-                }
-            }
-        };
-    </script>
-
-</head>
-
-<body class="min-h-screen bg-slate-50">
-
-    <div class="min-h-screen flex">
-
-        <!-- =====================================================
-             LEFT SIDE
-        ====================================================== -->
-
-        <div
-            class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-700 via-primary-600 to-indigo-800 text-white p-12 items-center"
-        >
-
-            <div class="max-w-lg mx-auto">
-
-                <div class="mb-8">
-
-                    <div
-                        class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center mb-6"
-                    >
-
-                        <svg
-                            class="w-8 h-8"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1"
-                            />
-                        </svg>
-
-                    </div>
-
-                    <h1 class="text-4xl font-bold mb-4">
-                        Welcome to PropertyPro
-                    </h1>
-
-                    <p class="text-indigo-100 text-lg leading-relaxed">
-                        Manage properties, tenants, leases, payments and
-                        maintenance from one powerful platform.
-                    </p>
-
-                </div>
-
-                <div class="space-y-5">
-
-                    <div class="flex items-center gap-4">
-
-                        <div
-                            class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"
-                        >
-                            ✓
-                        </div>
-
-                        <span>
-                            Easy property management
-                        </span>
-
-                    </div>
-
-                    <div class="flex items-center gap-4">
-
-                        <div
-                            class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"
-                        >
-                            ✓
-                        </div>
-
-                        <span>
-                            Track rent and payments
-                        </span>
-
-                    </div>
-
-                    <div class="flex items-center gap-4">
-
-                        <div
-                            class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"
-                        >
-                            ✓
-                        </div>
-
-                        <span>
-                            Manage maintenance requests
-                        </span>
-
-                    </div>
-
-                </div>
-
-            </div>
+            <p class="mt-2 text-sm text-slate-500">
+                Create your PropertyPro customer account
+            </p>
 
         </div>
 
 
-        <!-- =====================================================
-             RIGHT SIDE
-        ====================================================== -->
+        <!-- Registration Card -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 md:p-8">
 
-        <div
-            class="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10"
-        >
+            <?php if ($error): ?>
 
-            <div class="w-full max-w-md">
-
-                <!-- Logo -->
-
-                <div class="text-center mb-8">
-
-                    <div
-                        class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-600 text-white mb-4"
-                    >
-
-                        <svg
-                            class="w-6 h-6"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1"
-                            />
-
-                        </svg>
-
-                    </div>
-
-                    <h2 class="text-2xl font-bold text-slate-900">
-                        Create your account
-                    </h2>
-
-                    <p class="text-slate-500 mt-2">
-                        Join PropertyPro today
-                    </p>
-
-                </div>
-
-
-                <!-- Error -->
-
-                <?php if ($error): ?>
-
-                    <div
-                        class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-                    >
-
-                        <?= htmlspecialchars($error) ?>
-
-                    </div>
-
-                <?php endif; ?>
-
-
-                <!-- Success -->
-
-                <?php if ($success): ?>
-
-                    <div
-                        class="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700"
-                    >
-
-                        <?= htmlspecialchars($success) ?>
-
-                    </div>
-
-                <?php endif; ?>
-
-
-                <!-- =================================================
-                     FORM
-                ================================================== -->
-
-                <form
-                    method="POST"
-                    action=""
-                    class="space-y-5"
+                <div
+                    class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
                 >
+                    <?= e($error) ?>
+                </div>
 
-                    <!-- Name -->
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                        <div>
-
-                            <label
-                                for="first_name"
-                                class="block text-sm font-medium text-slate-700 mb-2"
-                            >
-                                First name
-                            </label>
-
-                            <input
-                                type="text"
-                                id="first_name"
-                                name="first_name"
-                                value="<?= htmlspecialchars($firstName) ?>"
-                                required
-                                autocomplete="given-name"
-                                class="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                                placeholder="First name"
-                            >
-
-                        </div>
+            <?php endif; ?>
 
 
-                        <div>
+            <form
+                method="POST"
+                action=""
+                class="space-y-5"
+                autocomplete="off"
+            >
 
-                            <label
-                                for="last_name"
-                                class="block text-sm font-medium text-slate-700 mb-2"
-                            >
-                                Last name
-                            </label>
+                <!-- Full Name -->
+                <div>
 
-                            <input
-                                type="text"
-                                id="last_name"
-                                name="last_name"
-                                value="<?= htmlspecialchars($lastName) ?>"
-                                required
-                                autocomplete="family-name"
-                                class="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                                placeholder="Last name"
-                            >
-
-                        </div>
-
-                    </div>
-
-
-                    <!-- Email -->
-
-                    <div>
-
-                        <label
-                            for="email"
-                            class="block text-sm font-medium text-slate-700 mb-2"
-                        >
-                            Email address
-                        </label>
-
-                        <input
-                            type="email"
-                            id="email"
-                            name="email"
-                            value="<?= htmlspecialchars($email) ?>"
-                            required
-                            autocomplete="email"
-                            class="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                            placeholder="you@example.com"
-                        >
-
-                    </div>
-
-
-                    <!-- Phone -->
-
-                    <div>
-
-                        <label
-                            for="phone"
-                            class="block text-sm font-medium text-slate-700 mb-2"
-                        >
-                            Phone number
-                        </label>
-
-                        <input
-                            type="tel"
-                            id="phone"
-                            name="phone"
-                            value="<?= htmlspecialchars($phone) ?>"
-                            autocomplete="tel"
-                            class="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                            placeholder="07XXXXXXXX"
-                        >
-
-                    </div>
-
-
-                    <!-- =================================================
-                         ROLE
-                    ================================================== -->
-
-                    <div>
-
-                        <label
-                            for="role"
-                            class="block text-sm font-medium text-slate-700 mb-2"
-                        >
-                            Account type
-                        </label>
-
-                        <select
-                            id="role"
-                            name="role"
-                            required
-                            class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                        >
-
-                            <option
-                                value="Customer"
-                                <?= $role === "Customer" ? "selected" : "" ?>
-                            >
-                                Customer
-                            </option>
-
-                            <option
-                                value="Administrator"
-                                <?= $role === "Administrator" ? "selected" : "" ?>
-                            >
-                                Administrator
-                            </option>
-
-                        </select>
-
-                        <p class="mt-2 text-xs text-slate-500">
-                            Select the type of account you want to create.
-                        </p>
-
-                    </div>
-
-
-                    <!-- Password -->
-
-                    <div>
-
-                        <label
-                            for="password"
-                            class="block text-sm font-medium text-slate-700 mb-2"
-                        >
-                            Password
-                        </label>
-
-                        <input
-                            type="password"
-                            id="password"
-                            name="password"
-                            required
-                            minlength="6"
-                            autocomplete="new-password"
-                            class="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                            placeholder="At least 6 characters"
-                        >
-
-                    </div>
-
-
-                    <!-- Confirm Password -->
-
-                    <div>
-
-                        <label
-                            for="password_confirmation"
-                            class="block text-sm font-medium text-slate-700 mb-2"
-                        >
-                            Confirm password
-                        </label>
-
-                        <input
-                            type="password"
-                            id="password_confirmation"
-                            name="password_confirmation"
-                            required
-                            minlength="6"
-                            autocomplete="new-password"
-                            class="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-                            placeholder="Repeat your password"
-                        >
-
-                    </div>
-
-
-                    <!-- Submit -->
-
-                    <button
-                        type="submit"
-                        class="w-full rounded-lg bg-primary-600 px-4 py-3 font-semibold text-white transition hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                    <label
+                        for="name"
+                        class="block text-sm font-medium text-slate-700 mb-2"
                     >
-                        Create Account
-                    </button>
+                        Full Name
+                    </label>
 
-                </form>
-
-
-                <!-- Login -->
-
-                <p class="text-center text-sm text-slate-600 mt-8">
-
-                    Already have an account?
-
-                    <a
-                        href="login.php"
-                        class="font-semibold text-primary-600 hover:text-primary-700"
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        value="<?= e($_POST["name"] ?? "") ?>"
+                        required
+                        autocomplete="name"
+                        placeholder="Enter your full name"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     >
-                        Sign in
-                    </a>
 
-                </p>
+                </div>
 
-                <p class="text-center text-xs text-slate-400 mt-6">
-                    © <?= date("Y") ?> PropertyPro Management
-                </p>
+
+                <!-- Email -->
+                <div>
+
+                    <label
+                        for="email"
+                        class="block text-sm font-medium text-slate-700 mb-2"
+                    >
+                        Email Address
+                    </label>
+
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        value="<?= e($_POST["email"] ?? "") ?>"
+                        required
+                        autocomplete="email"
+                        placeholder="Enter your email address"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                </div>
+
+
+                <!-- Phone -->
+                <div>
+
+                    <label
+                        for="phone"
+                        class="block text-sm font-medium text-slate-700 mb-2"
+                    >
+                        Phone Number
+                    </label>
+
+                    <input
+                        type="tel"
+                        id="phone"
+                        name="phone"
+                        value="<?= e($_POST["phone"] ?? "") ?>"
+                        autocomplete="tel"
+                        placeholder="Enter your phone number"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                </div>
+
+
+                <!-- Account Type -->
+                <div>
+
+                    <label
+                        for="accountType"
+                        class="block text-sm font-medium text-slate-700 mb-2"
+                    >
+                        Account Type
+                    </label>
+
+                    <input
+                        type="text"
+                        id="accountType"
+                        value="Customer"
+                        readonly
+                        aria-readonly="true"
+                        class="w-full rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-slate-600 cursor-not-allowed"
+                    >
+
+                    <p class="mt-1.5 text-xs text-slate-500">
+                        Public registrations are for Customer accounts only.
+                    </p>
+
+                </div>
+
+
+                <!-- Password -->
+                <div>
+
+                    <label
+                        for="password"
+                        class="block text-sm font-medium text-slate-700 mb-2"
+                    >
+                        Password
+                    </label>
+
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        minlength="6"
+                        autocomplete="new-password"
+                        placeholder="Create a password"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                    <p class="mt-1.5 text-xs text-slate-500">
+                        Password must contain at least 6 characters.
+                    </p>
+
+                </div>
+
+
+                <!-- Confirm Password -->
+                <div>
+
+                    <label
+                        for="confirmPassword"
+                        class="block text-sm font-medium text-slate-700 mb-2"
+                    >
+                        Confirm Password
+                    </label>
+
+                    <input
+                        type="password"
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        required
+                        minlength="6"
+                        autocomplete="new-password"
+                        placeholder="Confirm your password"
+                        class="w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                </div>
+
+
+                <!-- Submit -->
+                <button
+                    type="submit"
+                    class="w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                    Create Customer Account
+                </button>
+
+            </form>
+
+
+            <!-- Login Link -->
+            <div class="mt-6 text-center text-sm text-slate-600">
+
+                Already have an account?
+
+                <a
+                    href="login.php"
+                    class="font-semibold text-indigo-600 hover:text-indigo-700"
+                >
+                    Sign In
+                </a>
 
             </div>
 
         </div>
+
+
+        <!-- Footer -->
+        <p class="mt-6 text-center text-xs text-slate-400">
+            PropertyPro Management
+        </p>
 
     </div>
 
-</body>
+</div>
 
-</html>
+<?php
+require_once __DIR__ . "/../includes/footer.php";
+?>
+
