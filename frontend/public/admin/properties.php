@@ -10,11 +10,14 @@ $pageTitle = 'Properties';
 
 /*
 |--------------------------------------------------------------------------
-| Helper functions
+| Property page helper functions
+|--------------------------------------------------------------------------
+| Prefixing these functions with pp_ prevents conflicts with functions
+| already defined in includes/data.php.
 |--------------------------------------------------------------------------
 */
 
-function property_value(array $property, array $keys, $default = '')
+function pp_property_value(array $property, array $keys, $default = '')
 {
     foreach ($keys as $key) {
         if (array_key_exists($key, $property) && $property[$key] !== null) {
@@ -25,7 +28,7 @@ function property_value(array $property, array $keys, $default = '')
     return $default;
 }
 
-function normalize_id($value): string
+function pp_normalize_id($value): string
 {
     if (is_array($value)) {
         return (string) (
@@ -39,10 +42,10 @@ function normalize_id($value): string
     return (string) ($value ?? '');
 }
 
-function get_property_id(array $property): string
+function pp_get_property_id(array $property): string
 {
-    return normalize_id(
-        property_value(
+    return pp_normalize_id(
+        pp_property_value(
             $property,
             ['_id', 'id', 'propertyId'],
             ''
@@ -50,24 +53,28 @@ function get_property_id(array $property): string
     );
 }
 
-function get_unit_property_id(array $unit): string
+function pp_get_unit_property_id(array $unit): string
 {
     foreach (['propertyId', 'property', 'property_id'] as $key) {
         if (array_key_exists($key, $unit)) {
-            return normalize_id($unit[$key]);
+            return pp_normalize_id($unit[$key]);
         }
     }
 
     return '';
 }
 
-function unit_is_occupied(array $unit): bool
+function pp_unit_is_occupied(array $unit): bool
 {
-    $status = strtolower(trim((string) (
-        $unit['status']
-        ?? $unit['unitStatus']
-        ?? ''
-    )));
+    $status = strtolower(
+        trim(
+            (string) (
+                $unit['status']
+                ?? $unit['unitStatus']
+                ?? ''
+            )
+        )
+    );
 
     if (in_array($status, ['occupied', 'rented', 'leased'], true)) {
         return true;
@@ -77,9 +84,6 @@ function unit_is_occupied(array $unit): bool
         return false;
     }
 
-    /*
-     * Some unit records may indicate occupancy using a tenant.
-     */
     if (!empty($unit['tenantId'])) {
         return true;
     }
@@ -93,7 +97,7 @@ function unit_is_occupied(array $unit): bool
 
 /*
 |--------------------------------------------------------------------------
-| Calculate statistics from the actual units
+| Calculate property statistics from actual unit records
 |--------------------------------------------------------------------------
 */
 
@@ -104,7 +108,7 @@ foreach ($units as $unit) {
         continue;
     }
 
-    $propertyId = get_unit_property_id($unit);
+    $propertyId = pp_get_unit_property_id($unit);
 
     if ($propertyId === '') {
         continue;
@@ -120,7 +124,7 @@ foreach ($units as $unit) {
 
     $propertyStats[$propertyId]['units']++;
 
-    if (unit_is_occupied($unit)) {
+    if (pp_unit_is_occupied($unit)) {
         $propertyStats[$propertyId]['occupied']++;
     } else {
         $propertyStats[$propertyId]['vacant']++;
@@ -129,7 +133,7 @@ foreach ($units as $unit) {
 
 /*
 |--------------------------------------------------------------------------
-| Page
+| Page layout
 |--------------------------------------------------------------------------
 */
 
@@ -142,7 +146,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
     <div class="p-4 sm:p-6 lg:p-8">
 
-        <!-- Header -->
+        <!-- Page Header -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
 
             <div>
@@ -165,7 +169,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
         </div>
 
-        <!-- Section -->
+        <!-- All Properties -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-200">
 
             <div class="px-5 py-5 sm:px-6 border-b border-slate-200">
@@ -180,7 +184,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
             </div>
 
-            <!-- Properties -->
             <div class="p-5 sm:p-6">
 
                 <?php if (empty($properties)): ?>
@@ -212,34 +215,34 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 continue;
                             }
 
-                            $propertyId = get_property_id($property);
+                            $propertyId = pp_get_property_id($property);
 
-                            $propertyName = property_value(
+                            $propertyName = pp_property_value(
                                 $property,
                                 ['name', 'propertyName', 'title'],
                                 'Unnamed Property'
                             );
 
-                            $city = property_value(
+                            $city = pp_property_value(
                                 $property,
                                 ['city'],
                                 ''
                             );
 
-                            $area = property_value(
+                            $area = pp_property_value(
                                 $property,
                                 ['area', 'location', 'address'],
                                 ''
                             );
 
-                            $status = property_value(
+                            $status = pp_property_value(
                                 $property,
                                 ['status'],
                                 'Active'
                             );
 
                             /*
-                             * Get statistics calculated from $units.
+                             * Statistics come from the actual units.
                              */
                             $stats = $propertyStats[$propertyId] ?? [
                                 'units' => 0,
@@ -281,7 +284,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                             <div class="border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
 
-                                <!-- Property header -->
+                                <!-- Property information -->
                                 <div class="p-5 border-b border-slate-200">
 
                                     <div class="flex items-start justify-between gap-3">
@@ -309,9 +312,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 <!-- Statistics -->
                                 <div class="grid grid-cols-3 divide-x divide-slate-200">
 
-                                    <!-- Units -->
                                     <div class="p-4 text-center">
-
                                         <div class="text-2xl font-bold text-slate-900">
                                             <?= $totalUnits ?>
                                         </div>
@@ -319,12 +320,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         <div class="mt-1 text-xs font-medium text-slate-500">
                                             Units
                                         </div>
-
                                     </div>
 
-                                    <!-- Occupied -->
                                     <div class="p-4 text-center">
-
                                         <div class="text-2xl font-bold text-indigo-600">
                                             <?= $occupiedUnits ?>
                                         </div>
@@ -332,12 +330,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         <div class="mt-1 text-xs font-medium text-slate-500">
                                             Occupied
                                         </div>
-
                                     </div>
 
-                                    <!-- Vacant -->
                                     <div class="p-4 text-center">
-
                                         <div class="text-2xl font-bold text-emerald-600">
                                             <?= $vacantUnits ?>
                                         </div>
@@ -345,12 +340,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         <div class="mt-1 text-xs font-medium text-slate-500">
                                             Vacant
                                         </div>
-
                                     </div>
 
                                 </div>
 
-                                <!-- Footer -->
+                                <!-- View Property -->
                                 <div class="px-5 py-4 bg-slate-50 border-t border-slate-200">
 
                                     <a
