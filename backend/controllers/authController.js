@@ -1,19 +1,37 @@
+
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
 /**
- * Create JWT token
+ * Normalize email safely.
+ */
+const normalizeEmail = (email) => {
+  if (typeof email !== "string") {
+    return "";
+  }
+
+  return email.trim().toLowerCase();
+};
+
+/**
+ * Create JWT token.
  */
 const createToken = (user) => {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret || !secret.trim()) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+
   return jwt.sign(
     {
-      id: user._id,
+      id: user._id.toString(),
       name: user.name,
       email: user.email,
       role: user.role,
     },
-    process.env.JWT_SECRET,
+    secret,
     {
       expiresIn: process.env.JWT_EXPIRES_IN || "7d",
     }
@@ -21,10 +39,10 @@ const createToken = (user) => {
 };
 
 /**
- * Format user data returned to the frontend
+ * Format user data returned to the frontend.
  */
 const formatUser = (user) => ({
-  id: user._id,
+  id: user._id.toString(),
   name: user.name,
   email: user.email,
   phone: user.phone || "",
@@ -37,19 +55,19 @@ const formatUser = (user) => ({
  */
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body?.email);
+    const password = req.body?.password;
 
-    if (!email || !password) {
+    if (!email || typeof password !== "string" || !password) {
       return res.status(400).json({
         success: false,
         message: "Email and password are required",
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-
+    // Find user by normalized email.
     const user = await User.findOne({
-      email: normalizedEmail,
+      email,
     });
 
     if (!user) {
@@ -59,14 +77,29 @@ const login = async (req, res) => {
       });
     }
 
+    // Reject inactive accounts.
     if (user.status && user.status !== "Active") {
       return res.status(403).json({
         success: false,
-        message: "Your account is inactive. Please contact the administrator.",
+        message:
+          "Your account is inactive. Please contact the administrator.",
       });
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password);
+    // Verify password.
+    if (!user.password) {
+      console.error("Login failed: user has no stored password hash.");
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
+    }
+
+    const passwordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!passwordMatch) {
       return res.status(401).json({
@@ -75,14 +108,18 @@ const login = async (req, res) => {
       });
     }
 
+    // Create authentication token.
     const token = createToken(user);
     const formattedUser = formatUser(user);
 
+    // Redirect based on the stored database role.
     let redirect = "/customer/dashboard.php";
 
     if (user.role === "Administrator") {
       redirect = "/admin/dashboard.php";
     }
+
+    console.log(`Successful login for ${user.email}`);
 
     return res.status(200).json({
       success: true,
@@ -94,7 +131,8 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    // Log the real error in Render, not sensitive credentials.
+    console.error("Login error:", error.message);
 
     return res.status(500).json({
       success: false,
@@ -106,35 +144,38 @@ const login = async (req, res) => {
 /**
  * PUBLIC REGISTRATION
  *
- * IMPORTANT:
- * Public registration ALWAYS creates a Customer.
- *
- * We intentionally do NOT accept req.body.role.
- * This prevents someone from submitting:
- *
- * role: "Administrator"
- *
- * and creating an administrator account.
+ * All public registrations are Customers.
+ * Never accept a role from the submitted form.
  */
 const register = async (req, res) => {
   try {
-    const {
-      name,
-      email,
-      phone,
-      password,
-      confirmPassword,
-    } = req.body;
+    const name =
+      typeof req.body?.name === "string"
+        ? req.body.name.trim()
+        : "";
 
-    // Required fields
-    if (!name || !email || !password) {
+    const email = normalizeEmail(req.body?.email);
+
+    const phone =
+      typeof req.body?.phone === "string"
+        ? req.body.phone.trim()
+        : "";
+
+    const password = req.body?.password;
+    const confirmPassword = req.body?.confirmPassword;
+
+    if (
+      !name ||
+      !email ||
+      typeof password !== "string" ||
+      !password
+    ) {
       return res.status(400).json({
         success: false,
         message: "Name, email and password are required",
       });
     }
 
-    // Confirm password when supplied by the frontend
     if (
       confirmPassword !== undefined &&
       password !== confirmPassword
@@ -152,11 +193,9 @@ const register = async (req, res) => {
       });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
-
-    // Check whether email already exists
+    // Check for an existing account.
     const existingUser = await User.findOne({
-      email: normalizedEmail,
+      email,
     });
 
     if (existingUser) {
@@ -166,19 +205,14 @@ const register = async (req, res) => {
       });
     }
 
-    // Hash password
+    // Hash password before storing it.
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    /**
-     * IMPORTANT:
-     * Never take the role from req.body.
-     *
-     * Every public registration is a Customer.
-     */
+    // Public registration always creates a Customer.
     const user = await User.create({
-      name: name.trim(),
-      email: normalizedEmail,
-      phone: phone ? phone.trim() : "",
+      name,
+      email,
+      phone,
       password: hashedPassword,
       role: "Customer",
       status: "Active",
@@ -186,6 +220,8 @@ const register = async (req, res) => {
 
     const token = createToken(user);
     const formattedUser = formatUser(user);
+
+    console.log(`New customer registered: ${user.email}`);
 
     return res.status(201).json({
       success: true,
@@ -197,9 +233,8 @@ const register = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error("Registration error:", error.message);
 
-    // Handle duplicate email race condition
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -217,8 +252,7 @@ const register = async (req, res) => {
 /**
  * LOGOUT
  *
- * JWT authentication is stateless, so the PHP frontend
- * removes the token/session on logout.
+ * The PHP frontend clears the local session and token.
  */
 const logout = async (req, res) => {
   return res.status(200).json({
@@ -232,7 +266,9 @@ const logout = async (req, res) => {
  */
 const me = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await User.findById(req.user.id).select(
+      "-password"
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -248,7 +284,7 @@ const me = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get current user error:", error);
+    console.error("Get current user error:", error.message);
 
     return res.status(500).json({
       success: false,
@@ -263,4 +299,3 @@ module.exports = {
   logout,
   me,
 };
-
