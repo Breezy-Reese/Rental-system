@@ -54,27 +54,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              */
             $rawRole = $user['role'] ?? '';
 
-            $normalizedRole = strtolower(trim((string) $rawRole));
+            $normalizedRole = strtolower(
+                trim((string) $rawRole)
+            );
 
             if ($normalizedRole === 'customer') {
+
                 $user['role'] = 'Customer';
+
             } elseif (
                 $normalizedRole === 'administrator' ||
                 $normalizedRole === 'admin'
             ) {
+
                 $user['role'] = 'Administrator';
+
             } else {
-                $error = 'Your account has an invalid role. Please contact the administrator.';
+
+                $error =
+                    'Your account has an invalid role. Please contact the administrator.';
             }
 
             if ($error === '') {
 
+                /*
+                 * Regenerate the PHP session ID after successful login.
+                 */
                 session_regenerate_id(true);
 
                 /*
-                 * Store JWT.
+                 * IMPORTANT:
+                 *
+                 * api.php reads $_SESSION['token'] when attaching
+                 * the JWT Authorization header.
+                 *
+                 * Therefore the login token MUST be stored here.
                  */
-                $_SESSION['propertypro_token'] =
+                $_SESSION['token'] =
                     $result['data']['token'];
 
                 /*
@@ -82,19 +98,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  */
                 $_SESSION['user'] = $user;
 
+                /*
+                 * Send the user to the correct dashboard.
+                 */
                 redirect_by_role();
             }
 
         } else {
 
             /*
-             * TEMPORARY DEBUG - shows full API response.
-             * Revert to the simple message once the login
-             * issue is diagnosed.
+             * Display the API error.
              */
             $error =
-                ($result['message'] ?? 'Invalid email or password.')
-                . ' | FULL: ' . json_encode($result);
+                $result['message']
+                ?? 'Invalid email or password.';
         }
     }
 }
