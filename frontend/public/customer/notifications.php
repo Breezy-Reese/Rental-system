@@ -1,4 +1,3 @@
-```php
 <?php
 
 $pageTitle = "Notifications";
@@ -520,4 +519,3 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 </main>
 
 <?php require_once __DIR__ . "/../../includes/footer.php"; ?>
-```
