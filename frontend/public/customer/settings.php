@@ -1,4 +1,3 @@
-```php
 <?php
 
 $pageTitle = "Settings";
@@ -25,10 +24,6 @@ $email = $user['email'] ?? '';
 |--------------------------------------------------------------------------
 | Default settings
 |--------------------------------------------------------------------------
-|
-| For the current demo application, these are stored in the session.
-| Later, they can be moved to a database table.
-|
 */
 if (!isset($_SESSION['settings'])) {
     $_SESSION['settings'] = [
@@ -119,7 +114,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
     <div class="p-4 sm:p-6 lg:p-8">
 
-        <!-- Page Header -->
         <div class="mb-8">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
@@ -136,9 +130,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
 
                     <div class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700">
-                        <?= settings_e(
-                            strtoupper(substr($name, 0, 1))
-                        ) ?>
+                        <?= settings_e(strtoupper(substr($name, 0, 1))) ?>
                     </div>
 
                     <div>
@@ -156,7 +148,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             </div>
         </div>
 
-        <!-- Success Message -->
         <?php if ($successMessage): ?>
 
             <div class="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
@@ -179,15 +170,12 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         <?php endif; ?>
 
-        <!-- Settings Form -->
         <form method="POST" action="settings.php">
 
             <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
 
-                <!-- Main Settings -->
                 <div class="space-y-6 xl:col-span-2">
 
-                    <!-- Notifications -->
                     <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
                         <div class="border-b border-slate-200 px-6 py-5">
@@ -204,7 +192,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                         <div class="divide-y divide-slate-100">
 
-                            <!-- Email Notifications -->
                             <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
 
                                 <div>
@@ -227,7 +214,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                             </label>
 
-                            <!-- Payment Reminders -->
                             <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
 
                                 <div>
@@ -250,7 +236,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                             </label>
 
-                            <!-- Maintenance Updates -->
                             <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
 
                                 <div>
@@ -273,7 +258,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                             </label>
 
-                            <!-- Marketing -->
                             <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
 
                                 <div>
@@ -300,7 +284,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                     </section>
 
-                    <!-- Regional Settings -->
                     <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
 
                         <div class="border-b border-slate-200 px-6 py-5">
@@ -317,7 +300,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                         <div class="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
 
-                            <!-- Language -->
                             <div>
 
                                 <label
@@ -332,6 +314,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                     name="language"
                                     class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                                 >
+
                                     <option
                                         value="English"
                                         <?= $settings['language'] === 'English' ? 'selected' : '' ?>
@@ -345,11 +328,11 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                     >
                                         Swahili
                                     </option>
+
                                 </select>
 
                             </div>
 
-                            <!-- Timezone -->
                             <div>
 
                                 <label
@@ -401,7 +384,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                     </section>
 
-                    <!-- Save -->
                     <div class="flex justify-end">
 
                         <button
@@ -415,10 +397,8 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                 </div>
 
-                <!-- Right Column -->
                 <div class="space-y-6">
 
-                    <!-- Account -->
                     <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
                         <h2 class="text-lg font-semibold text-slate-900">
@@ -468,7 +448,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                     </section>
 
-                    <!-- Rental Links -->
                     <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
 
                         <h2 class="text-lg font-semibold text-slate-900">
@@ -505,7 +484,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                     </section>
 
-                    <!-- Security -->
                     <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6">
 
                         <div class="flex gap-3">
@@ -515,6 +493,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                             </div>
 
                             <div>
+
                                 <h2 class="font-semibold text-amber-900">
                                     Account Security
                                 </h2>
@@ -529,6 +508,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                 >
                                     Manage account →
                                 </a>
+
                             </div>
 
                         </div>
