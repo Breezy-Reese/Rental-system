@@ -1,11 +1,13 @@
 <?php
 
+$pageTitle = "Create Account";
+
+require_once __DIR__ . '/../includes/api.php';
+require_once __DIR__ . '/../includes/auth.php';
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-
-require_once __DIR__ . '/includes/api.php';
-require_once __DIR__ . '/includes/auth.php';
 
 if (is_logged_in()) {
     redirect_by_role();
@@ -27,39 +29,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $confirmPassword = $_POST['confirmPassword'] ?? '';
 
-
     if ($name === '') {
-
         $error = 'Please enter your full name.';
-
     } elseif ($email === '') {
-
         $error = 'Please enter your email address.';
-
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-
         $error = 'Please enter a valid email address.';
-
     } elseif ($phone === '') {
-
         $error = 'Please enter your phone number.';
-
     } elseif ($password === '') {
-
         $error = 'Please enter a password.';
-
     } elseif (strlen($password) < 6) {
-
         $error = 'Password must be at least 6 characters long.';
-
     } elseif ($confirmPassword === '') {
-
         $error = 'Please confirm your password.';
-
     } elseif ($password !== $confirmPassword) {
-
         $error = 'Passwords do not match.';
-
     } else {
 
         /*
@@ -78,7 +63,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]
         );
 
-
         if (!empty($response['success'])) {
 
             $token = $response['token']
@@ -89,26 +73,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ?? $response['data']['user']
                 ?? null;
 
-
             if ($token) {
-
                 $_SESSION['propertypro_token'] = $token;
                 $_SESSION['token'] = $token;
-
             }
-
 
             if ($user) {
-
                 $_SESSION['user'] = $user;
-
             }
 
-
-            /*
-             * Send the newly registered customer
-             * directly to the customer dashboard.
-             */
             header('Location: customer/dashboard.php');
             exit;
 
@@ -116,16 +89,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $error = $response['message']
                 ?? 'Registration failed. Please try again.';
-
         }
     }
 }
 
-$pageTitle = 'Create Account';
-
-include __DIR__ . '/includes/header.php';
 ?>
 
+<?php include __DIR__ . '/../includes/header.php'; ?>
 
 <div class="min-h-screen bg-black text-white relative overflow-hidden">
 
@@ -149,7 +119,6 @@ include __DIR__ . '/includes/header.php';
         ></div>
 
     </div>
-
 
     <!-- Registration container -->
     <div class="relative min-h-screen flex items-center justify-center px-4 py-12">
@@ -187,7 +156,6 @@ include __DIR__ . '/includes/header.php';
 
                 </div>
 
-
                 <h1 class="text-3xl font-bold tracking-tight text-white">
                     Create Account
                 </h1>
@@ -197,7 +165,6 @@ include __DIR__ . '/includes/header.php';
                 </p>
 
             </div>
-
 
             <!-- Registration card -->
             <div
@@ -223,7 +190,6 @@ include __DIR__ . '/includes/header.php';
                            bg-amber-500"
                 ></div>
 
-
                 <!-- Error -->
                 <?php if ($error): ?>
 
@@ -235,11 +201,10 @@ include __DIR__ . '/includes/header.php';
                                px-4 py-3
                                text-sm"
                     >
-                        <?= htmlspecialchars($error) ?>
+                        <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
                     </div>
 
                 <?php endif; ?>
-
 
                 <!-- Success -->
                 <?php if ($success): ?>
@@ -252,11 +217,10 @@ include __DIR__ . '/includes/header.php';
                                px-4 py-3
                                text-sm"
                     >
-                        <?= htmlspecialchars($success) ?>
+                        <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?>
                     </div>
 
                 <?php endif; ?>
-
 
                 <form method="POST" action="" class="space-y-5">
 
@@ -274,7 +238,7 @@ include __DIR__ . '/includes/header.php';
                             type="text"
                             id="name"
                             name="name"
-                            value="<?= htmlspecialchars($name) ?>"
+                            value="<?= htmlspecialchars($name, ENT_QUOTES, 'UTF-8') ?>"
                             required
                             autocomplete="name"
                             placeholder="Enter your full name"
@@ -293,7 +257,6 @@ include __DIR__ . '/includes/header.php';
 
                     </div>
 
-
                     <!-- Email -->
                     <div>
 
@@ -308,7 +271,7 @@ include __DIR__ . '/includes/header.php';
                             type="email"
                             id="email"
                             name="email"
-                            value="<?= htmlspecialchars($email) ?>"
+                            value="<?= htmlspecialchars($email, ENT_QUOTES, 'UTF-8') ?>"
                             required
                             autocomplete="email"
                             placeholder="Enter your email"
@@ -327,7 +290,6 @@ include __DIR__ . '/includes/header.php';
 
                     </div>
 
-
                     <!-- Phone -->
                     <div>
 
@@ -342,7 +304,7 @@ include __DIR__ . '/includes/header.php';
                             type="tel"
                             id="phone"
                             name="phone"
-                            value="<?= htmlspecialchars($phone) ?>"
+                            value="<?= htmlspecialchars($phone, ENT_QUOTES, 'UTF-8') ?>"
                             required
                             autocomplete="tel"
                             placeholder="Enter your phone number"
@@ -360,7 +322,6 @@ include __DIR__ . '/includes/header.php';
                         >
 
                     </div>
-
 
                     <!-- Password -->
                     <div>
@@ -394,7 +355,6 @@ include __DIR__ . '/includes/header.php';
                                        focus:ring-1
                                        focus:ring-amber-500"
                             >
-
 
                             <!-- Password visibility button -->
                             <button
@@ -431,7 +391,6 @@ include __DIR__ . '/includes/header.php';
                                     />
                                 </svg>
 
-
                                 <!-- Eye with strike -->
                                 <svg
                                     class="eye-closed hidden w-5 h-5"
@@ -472,7 +431,6 @@ include __DIR__ . '/includes/header.php';
 
                     </div>
 
-
                     <!-- Confirm Password -->
                     <div>
 
@@ -505,7 +463,6 @@ include __DIR__ . '/includes/header.php';
                                        focus:ring-1
                                        focus:ring-amber-500"
                             >
-
 
                             <!-- Password visibility button -->
                             <button
@@ -542,7 +499,6 @@ include __DIR__ . '/includes/header.php';
                                     />
                                 </svg>
 
-
                                 <!-- Eye with strike -->
                                 <svg
                                     class="eye-closed hidden w-5 h-5"
@@ -583,7 +539,6 @@ include __DIR__ . '/includes/header.php';
 
                     </div>
 
-
                     <!-- Submit -->
                     <button
                         type="submit"
@@ -604,7 +559,6 @@ include __DIR__ . '/includes/header.php';
                     </button>
 
                 </form>
-
 
                 <!-- Login link -->
                 <div class="mt-8 pt-6 border-t border-zinc-800 text-center">
@@ -629,7 +583,6 @@ include __DIR__ . '/includes/header.php';
 
             </div>
 
-
             <!-- Footer text -->
             <p class="text-center text-xs text-zinc-600 mt-6">
                 PropertyPro Management
@@ -640,7 +593,6 @@ include __DIR__ . '/includes/header.php';
     </div>
 
 </div>
-
 
 <script>
 function showHidePassword(inputId, button) {
@@ -656,10 +608,8 @@ function showHidePassword(inputId, button) {
 
     if (input.type === 'password') {
 
-        // Show password
         input.type = 'text';
 
-        // Change eye to eye-with-strike
         eyeOpen.classList.add('hidden');
         eyeClosed.classList.remove('hidden');
 
@@ -667,20 +617,14 @@ function showHidePassword(inputId, button) {
 
     } else {
 
-        // Hide password
         input.type = 'password';
 
-        // Change eye-with-strike back to normal eye
         eyeOpen.classList.remove('hidden');
         eyeClosed.classList.add('hidden');
 
         button.setAttribute('aria-label', 'Show password');
-
     }
 }
 </script>
 
-<?php
-include __DIR__ . '/includes/footer.php';
-?>
-
+<?php include __DIR__ . '/../includes/footer.php'; ?>
