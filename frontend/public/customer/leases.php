@@ -217,7 +217,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 <div class="lg:pl-64">
 
-```
+
 <?php require_once __DIR__ . "/../../includes/navbar.php"; ?>
 
 <main class="min-h-screen p-4 sm:p-6 lg:p-8">
@@ -497,7 +497,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
     <?php endif; ?>
 
 </main>
-```
+
 
 </div>
 
