@@ -25,10 +25,6 @@ $errorMessage = '';
 |--------------------------------------------------------------------------
 | Customer Unit Information
 |--------------------------------------------------------------------------
-|
-| Try to obtain the customer's assigned unit from the tenant/lease data.
-| The API may return unitId either as an object or as a plain ID.
-|
 */
 
 $customerUnitId = '';
@@ -37,7 +33,7 @@ $customerPropertyName = '';
 $customerRent = 0;
 
 /*
- * Check tenant unit.
+ * Get unit information from the customer tenant record.
  */
 if (!empty($customerTenant)) {
 
@@ -70,7 +66,7 @@ if (!empty($customerTenant)) {
     }
 
     /*
-     * Property from tenant.
+     * Property.
      */
     if (
         isset($customerTenant['propertyId']) &&
@@ -92,7 +88,7 @@ if (!empty($customerTenant)) {
 
 /*
 |--------------------------------------------------------------------------
-| Check current lease for unit information
+| Get unit information from current lease if necessary
 |--------------------------------------------------------------------------
 */
 
@@ -107,6 +103,7 @@ if (!empty($currentLease)) {
     ) {
 
         if ($customerUnitId === '') {
+
             $customerUnitId =
                 $currentLease['unitId']['_id']
                 ?? $currentLease['unitId']['id']
@@ -114,6 +111,7 @@ if (!empty($currentLease)) {
         }
 
         if ($customerUnitNumber === '') {
+
             $customerUnitNumber =
                 $currentLease['unitId']['unitNumber']
                 ?? $currentLease['unitId']['unit']
@@ -123,6 +121,7 @@ if (!empty($currentLease)) {
     } else {
 
         if ($customerUnitId === '') {
+
             $customerUnitId =
                 $currentLease['unitId']
                 ?? $currentLease['unit_id']
@@ -130,6 +129,7 @@ if (!empty($currentLease)) {
         }
 
         if ($customerUnitNumber === '') {
+
             $customerUnitNumber =
                 $currentLease['unitNumber']
                 ?? $currentLease['unit']
@@ -161,7 +161,7 @@ if (!empty($currentLease)) {
     }
 
     /*
-     * Rent.
+     * Monthly rent.
      */
     $customerRent =
         (float) (
@@ -179,12 +179,14 @@ if (!empty($currentLease)) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    $action = $_POST['action'] ?? '';
+    $action =
+        $_POST['action']
+        ?? '';
 
     if ($action === 'submit_payment') {
 
         /*
-         * Payment ID is now generated automatically.
+         * Generate payment ID automatically.
          */
         $paymentId =
             'PAY-' .
@@ -201,12 +203,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $paymentMethod =
             trim(
                 $_POST['paymentMethod']
-                ?? ''
-            );
-
-        $reference =
-            trim(
-                $_POST['reference']
                 ?? ''
             );
 
@@ -235,25 +231,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
 
         /*
-         * Validation.
+         * Validate unit.
          */
-
-        if ($unitId === '' && $unitNumber === '') {
+        if (
+            $unitId === '' &&
+            $unitNumber === ''
+        ) {
 
             $errorMessage =
                 'Your assigned unit could not be identified. Please contact the administrator.';
 
-        } elseif ($amount <= 0) {
+        }
+
+        /*
+         * Validate amount.
+         */
+        elseif ($amount <= 0) {
 
             $errorMessage =
                 'Payment amount must be greater than zero.';
 
-        } elseif ($paymentMethod === '') {
+        }
+
+        /*
+         * Validate payment method.
+         */
+        elseif ($paymentMethod === '') {
 
             $errorMessage =
                 'Please select a payment method.';
 
-        } elseif (
+        }
+
+        /*
+         * M-Pesa requires a phone number.
+         */
+        elseif (
             $paymentMethod === 'M-Pesa' &&
             $mpesaNumber === ''
         ) {
@@ -261,26 +274,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errorMessage =
                 'Please enter your M-Pesa number.';
 
-        } elseif (
+        }
+
+        /*
+         * Validate Kenyan M-Pesa number.
+         */
+        elseif (
             $paymentMethod === 'M-Pesa' &&
-            !preg_match('/^(?:254|\+254|0)?7\d{8}$/', $mpesaNumber)
+            !preg_match(
+                '/^(?:254|\+254|0)?7\d{8}$/',
+                $mpesaNumber
+            )
         ) {
 
             $errorMessage =
                 'Please enter a valid Kenyan M-Pesa number.';
 
-        } elseif (
-            $paymentMethod === 'M-Pesa' &&
-            $reference === ''
-        ) {
+        }
 
-            $errorMessage =
-                'Please enter the M-Pesa transaction code.';
-
-        } else {
+        else {
 
             /*
              * Normalize M-Pesa number.
+             *
+             * 0712345678
+             * becomes
+             * 254712345678
              */
             if ($paymentMethod === 'M-Pesa') {
 
@@ -291,7 +310,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $mpesaNumber
                     );
 
-                if (str_starts_with($mpesaNumber, '+254')) {
+                if (
+                    str_starts_with(
+                        $mpesaNumber,
+                        '+254'
+                    )
+                ) {
 
                     $mpesaNumber =
                         '254' .
@@ -301,7 +325,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         );
 
                 } elseif (
-                    str_starts_with($mpesaNumber, '07')
+                    str_starts_with(
+                        $mpesaNumber,
+                        '07'
+                    )
                 ) {
 
                     $mpesaNumber =
@@ -310,7 +337,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $mpesaNumber,
                             1
                         );
-
                 }
             }
 
@@ -326,17 +352,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $paymentId,
 
                 /*
-                 * Payment information.
+                 * Amount.
                  */
                 'amount' =>
                     $amount,
 
+                /*
+                 * Payment method.
+                 */
                 'paymentMethod' =>
                     $paymentMethod,
 
-                'reference' =>
-                    $reference,
-
+                /*
+                 * Payment date.
+                 */
                 'paymentDate' =>
                     $paymentDate !== ''
                         ? $paymentDate
@@ -352,13 +381,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $unitNumber,
 
                 /*
-                 * M-Pesa phone number.
+                 * M-Pesa number.
+                 *
+                 * Empty for non-M-Pesa payments.
                  */
                 'mpesaNumber' =>
                     $paymentMethod === 'M-Pesa'
                         ? $mpesaNumber
                         : '',
-
             ];
 
             /*
@@ -388,7 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /*
 |--------------------------------------------------------------------------
-| Reload customer data after submission
+| Reload customer data
 |--------------------------------------------------------------------------
 */
 
@@ -440,12 +470,12 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 <main class="flex-1 lg:ml-64">
 
-
 <?php require_once __DIR__ . "/../../includes/navbar.php"; ?>
 
 <div class="p-4 sm:p-6 lg:p-8">
 
     <!-- Header -->
+
     <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
         <div>
@@ -470,6 +500,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
     </div>
 
+
+    <!-- Success Message -->
+
     <?php if ($successMessage): ?>
 
         <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -483,6 +516,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
         </div>
 
     <?php endif; ?>
+
+
+    <!-- Error Message -->
 
     <?php if ($errorMessage): ?>
 
@@ -498,7 +534,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
     <?php endif; ?>
 
+
     <!-- Summary -->
+
     <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
         <div class="rounded-xl border bg-white p-5">
@@ -513,6 +551,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         </div>
 
+
         <div class="rounded-xl border bg-white p-5">
 
             <p class="text-sm text-slate-500">
@@ -524,6 +563,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             </p>
 
         </div>
+
 
         <div class="rounded-xl border bg-white p-5">
 
@@ -539,7 +579,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
     </div>
 
+
     <!-- Payment History -->
+
     <div class="overflow-hidden rounded-xl border bg-white">
 
         <div class="border-b px-6 py-5">
@@ -553,6 +595,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             </p>
 
         </div>
+
 
         <div class="overflow-x-auto">
 
@@ -589,6 +632,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     </tr>
 
                 </thead>
+
 
                 <tbody class="divide-y divide-slate-100 bg-white">
 
@@ -631,6 +675,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                         'bg-amber-100 text-amber-700',
                                 };
 
+
                             $historyUnit = '';
 
                             if (
@@ -667,6 +712,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                                 </td>
 
+
                                 <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
 
                                     <?= htmlspecialchars(
@@ -676,6 +722,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                     ) ?>
 
                                 </td>
+
 
                                 <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
 
@@ -687,6 +734,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                     ) ?>
 
                                 </td>
+
 
                                 <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
 
@@ -700,6 +748,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                                 </td>
 
+
                                 <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
 
                                     <?= htmlspecialchars(
@@ -711,6 +760,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                     ) ?>
 
                                 </td>
+
 
                                 <td class="whitespace-nowrap px-6 py-4">
 
@@ -742,6 +792,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 </div>
 
+
 </main>
 
 <!-- ============================================================
@@ -753,8 +804,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
     class="fixed inset-0 z-50 hidden overflow-y-auto bg-slate-950/50 px-4 py-10"
 >
 
-```
+
 <div class="mx-auto max-w-lg rounded-2xl bg-white shadow-xl">
+
 
     <!-- Modal Header -->
 
@@ -771,6 +823,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             </p>
 
         </div>
+
 
         <button
             type="button"
@@ -798,17 +851,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             value="submit_payment"
         >
 
-        <!-- Automatically generated Payment ID -->
-
-        <input
-            type="hidden"
-            name="paymentId"
-            value=""
-        >
-
 
         <!-- =================================================
-             Customer Unit
+             YOUR UNIT
         ================================================== -->
 
         <div>
@@ -817,7 +862,11 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 Your Unit
             </label>
 
-            <?php if ($customerUnitId !== '' || $customerUnitNumber !== ''): ?>
+
+            <?php if (
+                $customerUnitId !== '' ||
+                $customerUnitNumber !== ''
+            ): ?>
 
                 <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
 
@@ -841,7 +890,10 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                             </p>
 
-                            <?php if ($customerPropertyName !== ''): ?>
+
+                            <?php if (
+                                $customerPropertyName !== ''
+                            ): ?>
 
                                 <p class="mt-1 text-xs text-slate-500">
 
@@ -857,6 +909,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                         </div>
 
+
                         <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-600">
                             My Unit
                         </div>
@@ -864,6 +917,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     </div>
 
                 </div>
+
 
                 <input
                     type="hidden"
@@ -874,6 +928,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                         'UTF-8'
                     ) ?>"
                 >
+
 
                 <input
                     type="hidden"
@@ -894,6 +949,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                 </div>
 
+
                 <input
                     type="hidden"
                     name="unitId"
@@ -912,7 +968,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 
         <!-- =================================================
-             Amount
+             AMOUNT
         ================================================== -->
 
         <div>
@@ -924,11 +980,13 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 Amount
             </label>
 
+
             <div class="relative">
 
                 <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">
                     KSh
                 </span>
+
 
                 <input
                     type="number"
@@ -950,11 +1008,14 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             </div>
 
+
             <?php if ($customerRent > 0): ?>
 
                 <p class="mt-1 text-xs text-slate-500">
-                    Current monthly rent: KSh
-                    <?= number_format($customerRent) ?>
+
+                    Current monthly rent:
+                    KSh <?= number_format($customerRent) ?>
+
                 </p>
 
             <?php endif; ?>
@@ -963,7 +1024,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 
         <!-- =================================================
-             Payment Method
+             PAYMENT METHOD
         ================================================== -->
 
         <div>
@@ -974,6 +1035,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             >
                 Payment Method
             </label>
+
 
             <select
                 id="paymentMethod"
@@ -1008,108 +1070,56 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 
         <!-- =================================================
-             M-Pesa Details
+             M-PESA NUMBER
         ================================================== -->
 
         <div
             id="mpesaFields"
-            class="hidden space-y-5 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
+            class="hidden rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
         >
 
-            <div>
+            <div class="mb-4">
 
                 <p class="text-sm font-semibold text-slate-900">
-                    M-Pesa Payment Details
+                    M-Pesa Details
                 </p>
 
                 <p class="mt-1 text-xs text-slate-500">
-                    Enter the phone number used to make this M-Pesa payment.
+                    Enter the phone number used to make the payment.
                 </p>
 
             </div>
 
-
-            <!-- M-Pesa Number -->
-
-            <div>
-
-                <label
-                    for="mpesaNumber"
-                    class="mb-2 block text-sm font-medium text-slate-700"
-                >
-                    M-Pesa Number
-                </label>
-
-                <input
-                    type="tel"
-                    id="mpesaNumber"
-                    name="mpesaNumber"
-                    inputmode="numeric"
-                    autocomplete="tel"
-                    placeholder="0712345678"
-                    maxlength="13"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                >
-
-                <p class="mt-1 text-xs text-slate-500">
-                    Example: 0712345678
-                </p>
-
-            </div>
-
-
-            <!-- Transaction Code -->
-
-            <div>
-
-                <label
-                    for="reference"
-                    class="mb-2 block text-sm font-medium text-slate-700"
-                >
-                    M-Pesa Transaction Code
-                </label>
-
-                <input
-                    type="text"
-                    id="reference"
-                    name="reference"
-                    placeholder="Enter M-Pesa transaction code"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm uppercase focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                >
-
-            </div>
-
-        </div>
-
-
-        <!-- =================================================
-             Reference for non-M-Pesa payments
-        ================================================== -->
-
-        <div
-            id="otherReferenceField"
-            class="hidden"
-        >
 
             <label
-                for="otherReference"
+                for="mpesaNumber"
                 class="mb-2 block text-sm font-medium text-slate-700"
             >
-                Reference
+                M-Pesa Number
             </label>
 
+
             <input
-                type="text"
-                id="otherReference"
-                placeholder="Payment reference"
-                class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                type="tel"
+                id="mpesaNumber"
+                name="mpesaNumber"
+                inputmode="numeric"
+                autocomplete="tel"
+                placeholder="0712345678"
+                maxlength="13"
+                class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             >
+
+
+            <p class="mt-1 text-xs text-slate-500">
+                Example: 0712345678
+            </p>
 
         </div>
 
 
         <!-- =================================================
-             Payment Date
+             PAYMENT DATE
         ================================================== -->
 
         <div>
@@ -1120,6 +1130,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             >
                 Payment Date
             </label>
+
 
             <input
                 type="date"
@@ -1134,7 +1145,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 
         <!-- =================================================
-             Buttons
+             BUTTONS
         ================================================== -->
 
         <div class="flex justify-end gap-3 border-t pt-5">
@@ -1146,6 +1157,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             >
                 Cancel
             </button>
+
 
             <button
                 type="submit"
@@ -1159,7 +1171,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
     </form>
 
 </div>
-```
+
 
 </div>
 
@@ -1180,64 +1192,26 @@ document.addEventListener('DOMContentLoaded', function () {
     const mpesaNumber =
         document.getElementById('mpesaNumber');
 
-    const reference =
-        document.getElementById('reference');
 
-    const otherReferenceField =
-        document.getElementById('otherReferenceField');
-
-    const otherReference =
-        document.getElementById('otherReference');
-
+    /*
+     * Show or hide M-Pesa number.
+     */
 
     function updatePaymentMethod() {
 
-        const method =
-            paymentMethod.value;
-
-
-        /*
-         * M-Pesa selected.
-         */
-
-        if (method === 'M-Pesa') {
+        if (paymentMethod.value === 'M-Pesa') {
 
             mpesaFields.classList.remove('hidden');
 
-            otherReferenceField.classList.add('hidden');
-
             mpesaNumber.required = true;
 
-            reference.required = true;
-
-            otherReference.required = false;
-
-        }
-
-
-        /*
-         * Other payment methods.
-         */
-
-        else {
+        } else {
 
             mpesaFields.classList.add('hidden');
 
             mpesaNumber.required = false;
 
-            reference.required = false;
-
-            if (method !== '') {
-
-                otherReferenceField.classList.remove('hidden');
-
-            } else {
-
-                otherReferenceField.classList.add('hidden');
-
-            }
-
-            otherReference.required = false;
+            mpesaNumber.value = '';
         }
     }
 
@@ -1256,7 +1230,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
     /*
-     * Prevent letters in the M-Pesa number.
+     * Allow only numbers and + in M-Pesa number.
      */
 
     mpesaNumber.addEventListener(
@@ -1273,21 +1247,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 
     /*
-     * Uppercase transaction code.
-     */
-
-    reference.addEventListener(
-        'input',
-        function () {
-
-            this.value =
-                this.value.toUpperCase();
-        }
-    );
-
-
-    /*
-     * Close modal when clicking outside it.
+     * Close modal when clicking outside.
      */
 
     const modal =
