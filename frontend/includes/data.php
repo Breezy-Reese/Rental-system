@@ -1,5 +1,11 @@
 <?php
 
+/**
+ * ============================================================
+ * PropertyPro - Central Data Loader
+ * ============================================================
+ */
+
 if (!function_exists('money')) {
     function money($amount): string
     {
@@ -12,6 +18,7 @@ if (!function_exists('money')) {
 
 require_once __DIR__ . '/api.php';
 require_once __DIR__ . '/auth.php';
+
 /*
 |--------------------------------------------------------------------------
 | Default data
@@ -21,6 +28,7 @@ require_once __DIR__ . '/auth.php';
 $properties = [];
 $units = [];
 $tenants = [];
+$customers = [];
 $payments = [];
 $leases = [];
 $expenses = [];
@@ -66,7 +74,7 @@ if (!function_exists('api_rows')) {
         }
 
         /*
-         * If data itself is a list.
+         * Data itself is a list.
          */
         if (array_is_list($data)) {
             return $data;
@@ -80,6 +88,8 @@ if (!function_exists('api_rows')) {
             'rows',
             'results',
             'data',
+            'customers',
+            'users',
             'properties',
             'units',
             'tenants',
@@ -137,21 +147,24 @@ if (!function_exists('data_value')) {
 |--------------------------------------------------------------------------
 */
 
-function normalize_id($value): string
-{
-    if (is_array($value)) {
-        return (string) (
-            $value['_id']
-            ?? $value['id']
-            ?? $value['propertyId']
-            ?? $value['tenantId']
-            ?? $value['unitId']
-            ?? $value['leaseId']
-            ?? ''
-        );
-    }
+if (!function_exists('normalize_id')) {
+    function normalize_id($value): string
+    {
+        if (is_array($value)) {
+            return (string) (
+                $value['_id']
+                ?? $value['id']
+                ?? $value['userId']
+                ?? $value['propertyId']
+                ?? $value['tenantId']
+                ?? $value['unitId']
+                ?? $value['leaseId']
+                ?? ''
+            );
+        }
 
-    return (string) ($value ?? '');
+        return (string) ($value ?? '');
+    }
 }
 
 /*
@@ -166,17 +179,118 @@ if (
 ) {
 
     /*
-     * Get all administrator resources from Node API.
-     */
+    |--------------------------------------------------------------------------
+    | Load administrator resources
+    |--------------------------------------------------------------------------
+    */
 
-    $propertyResponse = api_get('/properties');
-    $unitResponse = api_get('/units');
-    $tenantResponse = api_get('/tenants');
-    $paymentResponse = api_get('/payments');
-    $leaseResponse = api_get('/leases');
-    $expenseResponse = api_get('/expenses');
-    $maintenanceResponse = api_get('/maintenance');
-    $notificationResponse = api_get('/notifications');
+    $customerResponse =
+        api_get('/admin/customers');
+
+    $propertyResponse =
+        api_get('/properties');
+
+    $unitResponse =
+        api_get('/units');
+
+    $tenantResponse =
+        api_get('/tenants');
+
+    $paymentResponse =
+        api_get('/payments');
+
+    $leaseResponse =
+        api_get('/leases');
+
+    $expenseResponse =
+        api_get('/expenses');
+
+    $maintenanceResponse =
+        api_get('/maintenance');
+
+    $notificationResponse =
+        api_get('/notifications');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Customers
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    | A newly registered customer exists as a User first.
+    | They may not have a Tenant record until the administrator
+    | assigns them a property/unit.
+    |
+    */
+
+    $customers = api_rows(
+        $customerResponse,
+        'customers'
+    );
+
+    /*
+     * Some APIs may return users instead of customers.
+     */
+    if (empty($customers)) {
+        $customers = api_rows(
+            $customerResponse,
+            'users'
+        );
+    }
+
+    foreach ($customers as &$customer) {
+
+        $customer['_id'] =
+            $customer['_id']
+            ?? $customer['id']
+            ?? $customer['userId']
+            ?? '';
+
+        $customer['id'] =
+            $customer['id']
+            ?? $customer['userId']
+            ?? $customer['_id']
+            ?? '';
+
+        $customer['userId'] =
+            $customer['userId']
+            ?? $customer['_id']
+            ?? $customer['id']
+            ?? '';
+
+        $customer['name'] =
+            $customer['name']
+            ?? trim(
+                ($customer['firstName'] ?? '')
+                . ' '
+                . ($customer['lastName'] ?? '')
+            );
+
+        $customer['email'] =
+            $customer['email']
+            ?? '';
+
+        $customer['phone'] =
+            $customer['phone']
+            ?? '';
+
+        $customer['role'] =
+            $customer['role']
+            ?? 'Customer';
+
+        $customer['status'] =
+            $customer['status']
+            ?? 'Active';
+
+        $customer['hasTenant'] =
+            !empty($customer['tenantId']);
+
+        $customer['availableForLease'] =
+            empty($customer['tenantId']);
+
+    }
+
+    unset($customer);
 
     /*
     |--------------------------------------------------------------------------
@@ -254,13 +368,21 @@ if (
             $unit['status']
             ?? 'Vacant';
 
+        $unit['rent'] =
+            (float) (
+                $unit['rent']
+                ?? $unit['monthlyRent']
+                ?? 0
+            );
+
         /*
-         * Property can be populated.
+         * Populated property.
          */
         if (
             isset($unit['propertyId']) &&
             is_array($unit['propertyId'])
         ) {
+
             $unit['property'] =
                 $unit['propertyId']['name']
                 ?? '';
@@ -269,7 +391,9 @@ if (
                 $unit['propertyId']['_id']
                 ?? $unit['propertyId']['id']
                 ?? '';
+
         } else {
+
             $unit['property'] =
                 $unit['property']
                 ?? '';
@@ -284,7 +408,7 @@ if (
 
     /*
     |--------------------------------------------------------------------------
-    | Tenants
+    | Existing Tenants
     |--------------------------------------------------------------------------
     */
 
@@ -306,6 +430,10 @@ if (
             ?? $tenantItem['_id']
             ?? '';
 
+        $tenantItem['userId'] =
+            $tenantItem['userId']
+            ?? '';
+
         $tenantItem['name'] =
             $tenantItem['name']
             ?? '';
@@ -317,9 +445,102 @@ if (
         $tenantItem['phone'] =
             $tenantItem['phone']
             ?? '';
+
+        $tenantItem['status'] =
+            $tenantItem['status']
+            ?? 'Active';
     }
 
     unset($tenantItem);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Add unassigned customers to tenant compatibility list
+    |--------------------------------------------------------------------------
+    |
+    | This allows older admin pages that use $tenants to also see
+    | newly registered customers.
+    |
+    */
+
+    if (!empty($customers)) {
+
+        $existingUserIds = [];
+
+        foreach ($tenants as $existingTenant) {
+
+            $existingUserId =
+                normalize_id(
+                    $existingTenant['userId']
+                    ?? ''
+                );
+
+            if ($existingUserId !== '') {
+                $existingUserIds[$existingUserId] = true;
+            }
+        }
+
+        foreach ($customers as $customer) {
+
+            $userId =
+                normalize_id(
+                    $customer['userId']
+                    ?? $customer['_id']
+                    ?? $customer['id']
+                    ?? ''
+                );
+
+            if (
+                $userId === '' ||
+                isset($existingUserIds[$userId])
+            ) {
+                continue;
+            }
+
+            $tenants[] = [
+                '_id' =>
+                    $userId,
+
+                'id' =>
+                    $userId,
+
+                'userId' =>
+                    $userId,
+
+                'tenantId' =>
+                    null,
+
+                'name' =>
+                    $customer['name']
+                    ?? '',
+
+                'email' =>
+                    $customer['email']
+                    ?? '',
+
+                'phone' =>
+                    $customer['phone']
+                    ?? '',
+
+                'property' =>
+                    '',
+
+                'unit' =>
+                    '',
+
+                'status' =>
+                    'Unassigned',
+
+                'hasTenant' =>
+                    false,
+
+                'availableForLease' =>
+                    true,
+            ];
+
+            $existingUserIds[$userId] = true;
+        }
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -334,30 +555,22 @@ if (
 
     foreach ($payments as &$payment) {
 
-        /*
-         * MongoDB ID
-         */
         $payment['_id'] =
             $payment['_id']
             ?? $payment['id']
             ?? '';
 
-        /*
-         * Frontend-compatible ID/reference.
-         */
         $payment['id'] =
             $payment['paymentId']
             ?? $payment['id']
             ?? $payment['_id']
             ?? '';
 
-        /*
-         * Tenant.
-         */
         if (
             isset($payment['tenantId']) &&
             is_array($payment['tenantId'])
         ) {
+
             $payment['tenant'] =
                 $payment['tenantId']['name']
                 ?? $payment['tenantId']['tenantId']
@@ -371,7 +584,9 @@ if (
             $payment['tenantEmail'] =
                 $payment['tenantId']['email']
                 ?? '';
+
         } else {
+
             $payment['tenant'] =
                 $payment['tenant']
                 ?? '';
@@ -382,15 +597,6 @@ if (
                 ?? '';
         }
 
-        /*
-         * Lease / property.
-         *
-         * Your Payment controller populates leaseId with:
-         * leaseId, startDate, endDate, rent, status
-         *
-         * The lease itself may contain a property reference depending
-         * on your Lease model.
-         */
         if (
             isset($payment['leaseId']) &&
             is_array($payment['leaseId'])
@@ -405,10 +611,13 @@ if (
                 isset($payment['leaseId']['propertyId']) &&
                 is_array($payment['leaseId']['propertyId'])
             ) {
+
                 $payment['property'] =
                     $payment['leaseId']['propertyId']['name']
                     ?? '';
+
             } else {
+
                 $payment['property'] =
                     $payment['property']
                     ?? '';
@@ -425,34 +634,22 @@ if (
                 ?? '';
         }
 
-        /*
-         * Payment method.
-         */
         $payment['method'] =
             $payment['paymentMethod']
             ?? $payment['method']
             ?? '-';
 
-        /*
-         * Amount.
-         */
         $payment['amount'] =
             (float) (
                 $payment['amount']
                 ?? 0
             );
 
-        /*
-         * Date.
-         */
         $payment['date'] =
             $payment['paymentDate']
             ?? $payment['date']
             ?? '';
 
-        /*
-         * Status.
-         */
         $payment['status'] =
             $payment['status']
             ?? 'Pending';
@@ -484,13 +681,11 @@ if (
             ?? $lease['_id']
             ?? '';
 
-        /*
-         * Tenant.
-         */
         if (
             isset($lease['tenantId']) &&
             is_array($lease['tenantId'])
         ) {
+
             $lease['tenant'] =
                 $lease['tenantId']['name']
                 ?? '';
@@ -499,15 +694,24 @@ if (
                 $lease['tenantId']['_id']
                 ?? $lease['tenantId']['id']
                 ?? '';
+
+        } else {
+
+            $lease['tenant'] =
+                $lease['tenant']
+                ?? '';
+
+            $lease['tenant_id'] =
+                $lease['tenant_id']
+                ?? $lease['tenantId']
+                ?? '';
         }
 
-        /*
-         * Property.
-         */
         if (
             isset($lease['propertyId']) &&
             is_array($lease['propertyId'])
         ) {
+
             $lease['property'] =
                 $lease['propertyId']['name']
                 ?? '';
@@ -516,13 +720,55 @@ if (
                 $lease['propertyId']['_id']
                 ?? $lease['propertyId']['id']
                 ?? '';
+
+        } else {
+
+            $lease['property'] =
+                $lease['property']
+                ?? '';
+
+            $lease['property_id'] =
+                $lease['property_id']
+                ?? $lease['propertyId']
+                ?? '';
+        }
+
+        if (
+            isset($lease['unitId']) &&
+            is_array($lease['unitId'])
+        ) {
+
+            $lease['unit'] =
+                $lease['unitId']['unitNumber']
+                ?? '';
+
+            $lease['unit_id'] =
+                $lease['unitId']['_id']
+                ?? $lease['unitId']['id']
+                ?? '';
+
+        } else {
+
+            $lease['unit'] =
+                $lease['unit']
+                ?? '';
+
+            $lease['unit_id'] =
+                $lease['unit_id']
+                ?? $lease['unitId']
+                ?? '';
         }
 
         $lease['rent'] =
             (float) (
                 $lease['rent']
+                ?? $lease['monthlyRent']
                 ?? 0
             );
+
+        $lease['status'] =
+            $lease['status']
+            ?? 'Active';
     }
 
     unset($lease);
@@ -545,18 +791,12 @@ if (
             ?? $expense['id']
             ?? '';
 
-        /*
-         * Frontend reference.
-         */
         $expense['id'] =
             $expense['expenseId']
             ?? $expense['id']
             ?? $expense['_id']
             ?? '';
 
-        /*
-         * Property is populated by the backend.
-         */
         if (
             isset($expense['propertyId']) &&
             is_array($expense['propertyId'])
@@ -626,10 +866,12 @@ if (
     );
 
     if (empty($maintenanceRequests)) {
-        $maintenanceRequests = api_rows(
-            $maintenanceResponse,
-            'maintenanceRequests'
-        );
+
+        $maintenanceRequests =
+            api_rows(
+                $maintenanceResponse,
+                'maintenanceRequests'
+            );
     }
 
     foreach ($maintenanceRequests as &$request) {
@@ -645,9 +887,6 @@ if (
             ?? $request['_id']
             ?? '';
 
-        /*
-         * Tenant.
-         */
         if (
             isset($request['tenantId']) &&
             is_array($request['tenantId'])
@@ -678,9 +917,6 @@ if (
                 ?? '';
         }
 
-        /*
-         * Property.
-         */
         if (
             isset($request['propertyId']) &&
             is_array($request['propertyId'])
@@ -707,9 +943,6 @@ if (
                 ?? '';
         }
 
-        /*
-         * Unit.
-         */
         if (
             isset($request['unitId']) &&
             is_array($request['unitId'])
@@ -717,7 +950,6 @@ if (
 
             $request['unit'] =
                 $request['unitId']['unitNumber']
-                ?? $request['unitId']['unitId']
                 ?? '';
 
             $request['unit_id'] =
@@ -838,12 +1070,16 @@ if (
         api_data($dashboardResponse);
 
     /*
-     * Tenant.
-     */
+    |--------------------------------------------------------------------------
+    | Tenant
+    |--------------------------------------------------------------------------
+    */
+
     if (
         isset($dashboardData['tenant']) &&
         is_array($dashboardData['tenant'])
     ) {
+
         $tenant =
             $dashboardData['tenant'];
     }
@@ -853,17 +1089,22 @@ if (
         isset($dashboardData['currentTenant']) &&
         is_array($dashboardData['currentTenant'])
     ) {
+
         $tenant =
             $dashboardData['currentTenant'];
     }
 
     /*
-     * Lease.
-     */
+    |--------------------------------------------------------------------------
+    | Lease
+    |--------------------------------------------------------------------------
+    */
+
     if (
         isset($dashboardData['lease']) &&
         is_array($dashboardData['lease'])
     ) {
+
         $currentLease =
             $dashboardData['lease'];
     }
@@ -873,6 +1114,7 @@ if (
         isset($dashboardData['currentLease']) &&
         is_array($dashboardData['currentLease'])
     ) {
+
         $currentLease =
             $dashboardData['currentLease'];
     }
@@ -886,23 +1128,31 @@ if (
             isset($leaseData['_id']) ||
             isset($leaseData['id'])
         ) {
+
             $currentLease =
                 $leaseData;
+
         } elseif (
             isset($leaseData['lease']) &&
             is_array($leaseData['lease'])
         ) {
+
             $currentLease =
                 $leaseData['lease'];
+
         } elseif (array_is_list($leaseData)) {
+
             $currentLease =
                 $leaseData[0] ?? [];
         }
     }
 
     /*
-     * Customer payments.
-     */
+    |--------------------------------------------------------------------------
+    | Payments
+    |--------------------------------------------------------------------------
+    */
+
     $payments =
         api_rows(
             $paymentResponse,
@@ -914,6 +1164,7 @@ if (
         isset($dashboardData['payments']) &&
         is_array($dashboardData['payments'])
     ) {
+
         $payments =
             $dashboardData['payments'];
     }
@@ -930,15 +1181,6 @@ if (
             ?? $payment['id']
             ?? $payment['_id']
             ?? '';
-
-        if (
-            isset($payment['tenantId']) &&
-            is_array($payment['tenantId'])
-        ) {
-            $payment['tenant'] =
-                $payment['tenantId']['name']
-                ?? '';
-        }
 
         $payment['method'] =
             $payment['paymentMethod']
@@ -964,8 +1206,11 @@ if (
     unset($payment);
 
     /*
-     * Customer maintenance.
-     */
+    |--------------------------------------------------------------------------
+    | Maintenance
+    |--------------------------------------------------------------------------
+    */
+
     $maintenanceRequests =
         api_rows(
             $maintenanceResponse,
@@ -973,6 +1218,7 @@ if (
         );
 
     if (empty($maintenanceRequests)) {
+
         $maintenanceRequests =
             api_rows(
                 $maintenanceResponse,
@@ -997,6 +1243,7 @@ if (
             isset($request['tenantId']) &&
             is_array($request['tenantId'])
         ) {
+
             $request['tenant'] =
                 $request['tenantId']['name']
                 ?? '';
@@ -1006,6 +1253,7 @@ if (
             isset($request['propertyId']) &&
             is_array($request['propertyId'])
         ) {
+
             $request['property'] =
                 $request['propertyId']['name']
                 ?? '';
@@ -1015,6 +1263,7 @@ if (
             isset($request['unitId']) &&
             is_array($request['unitId'])
         ) {
+
             $request['unit'] =
                 $request['unitId']['unitNumber']
                 ?? '';
@@ -1037,8 +1286,11 @@ if (
     unset($request);
 
     /*
-     * Customer notifications.
-     */
+    |--------------------------------------------------------------------------
+    | Notifications
+    |--------------------------------------------------------------------------
+    */
+
     $notifications =
         api_rows(
             $notificationResponse,
@@ -1081,42 +1333,13 @@ if (
     unset($notification);
 
     /*
-     * Customer tenant.
-     */
+    |--------------------------------------------------------------------------
+    | Customer tenant
+    |--------------------------------------------------------------------------
+    */
+
     $customerTenant =
         $tenant;
-
-    /*
-     * Normalize customer maintenance.
-     */
-    if (!empty($maintenanceRequests)) {
-
-        $customerName =
-            current_user()['name']
-            ?? '';
-
-        $filteredMaintenance = [];
-
-        foreach ($maintenanceRequests as $request) {
-
-            /*
-             * Customer endpoint should already be filtered.
-             * Keep records returned by it.
-             */
-            if (
-                !isset($request['tenant']) ||
-                $request['tenant'] === '' ||
-                $customerName === '' ||
-                $request['tenant'] === $customerName
-            ) {
-                $filteredMaintenance[] =
-                    $request;
-            }
-        }
-
-        $maintenanceRequests =
-            $filteredMaintenance;
-    }
 }
 
 /*
@@ -1136,4 +1359,8 @@ if (!isset($customerTenant)) {
 if (!isset($currentLease)) {
     $currentLease =
         $leases[0] ?? [];
+}
+
+if (!isset($customers)) {
+    $customers = [];
 }
