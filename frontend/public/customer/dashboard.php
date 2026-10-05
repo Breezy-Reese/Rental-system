@@ -79,14 +79,6 @@ foreach ($maintenanceForCustomer as $request) {
     <!-- Header -->
     <header class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
 
-        <button
-            id="openSidebar"
-            type="button"
-            class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
-        >
-            ☰
-        </button>
-
         <div class="ml-auto flex items-center gap-4">
 
             <div class="hidden text-right sm:block">

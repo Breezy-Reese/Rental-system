@@ -1,39 +1,13 @@
 <?php
 
-/**
- * ============================================================
- * PropertyPro API Connection
- * ============================================================
- *
- * LOCAL:
- *   http://localhost:5000/api
- *
- * PRODUCTION:
- *   https://rental-system-hvnn.onrender.com/api
- *
- * The application automatically detects the environment.
- * ============================================================
- */
+
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
 
 
-/**
- * ------------------------------------------------------------
- * API BASE URL
- * ------------------------------------------------------------
- *
- * Priority:
- *
- * 1. PROPERTYPRO_API_URL environment variable
- * 2. Render production URL when running on Render
- * 3. localhost for local development
- *
- * This prevents production from accidentally trying to call
- * localhost:5000 inside the PHP container.
- */
+
 function get_api_base_url(): string
 {
     $configuredUrl = getenv('PROPERTYPRO_API_URL');
@@ -43,7 +17,10 @@ function get_api_base_url(): string
     }
 
     // Render automatically provides RENDER=true.
-    if (getenv('RENDER') === 'true' || getenv('RENDER_SERVICE_ID')) {
+    if (
+        getenv('RENDER') === 'true' ||
+        getenv('RENDER_SERVICE_ID')
+    ) {
         return 'https://rental-system-hvnn.onrender.com/api';
     }
 
@@ -115,8 +92,6 @@ function api_request(
         $jsonData = json_encode($data);
 
         if ($jsonData === false) {
-            curl_close($ch);
-
             return [
                 'success' => false,
                 'message' => 'Failed to encode request data.',
@@ -136,13 +111,12 @@ function api_request(
     $curlError = curl_error($ch);
     $curlErrno = curl_errno($ch);
 
-    $httpStatus = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $httpStatus = (int) curl_getinfo(
+        $ch,
+        CURLINFO_HTTP_CODE
+    );
 
-    curl_close($ch);
-
-    /*
-     * cURL/network error.
-     */
+    
     if ($response === false || $curlErrno !== 0) {
         error_log(
             'PropertyPro API CURL ERROR: ' .
@@ -280,8 +254,6 @@ function api_base_url(): string
  * ============================================================
  * DEBUG HELPER
  * ============================================================
- *
- * Useful during development.
  */
 function api_connection_info(): array
 {
@@ -295,4 +267,3 @@ function api_connection_info(): array
             : 'local',
     ];
 }
-

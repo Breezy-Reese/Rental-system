@@ -1,20 +1,57 @@
 <?php
+
+/**
+ * ============================================================
+ * PropertyPro - Main Header
+ * ============================================================
+ */
+
 $pageTitle = $pageTitle ?? 'PropertyPro';
 $currentPage = basename($_SERVER['PHP_SELF']);
+
+/*
+|--------------------------------------------------------------------------
+| Pages that do NOT use the sidebar
+|--------------------------------------------------------------------------
+| These pages should not display the mobile hamburger button.
+*/
+$publicPages = [
+    'login.php',
+    'register.php',
+];
+
+/*
+|--------------------------------------------------------------------------
+| Determine whether the mobile menu should be displayed
+|--------------------------------------------------------------------------
+*/
+$showMobileMenu = !in_array($currentPage, $publicPages, true);
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
     <meta charset="UTF-8">
+
     <meta
         name="viewport"
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?> | PropertyPro</title>
+    <title>
+        <?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>
+        | PropertyPro
+    </title>
 
+    <!-- ========================================================
+         Tailwind CSS
+    ========================================================= -->
     <script src="https://cdn.tailwindcss.com"></script>
 
+    <!-- ========================================================
+         Tailwind Configuration
+    ========================================================= -->
     <script>
         tailwind.config = {
             theme: {
@@ -34,6 +71,7 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             }
         };
     </script>
+
 </head>
 
 <body class="bg-slate-50 text-slate-800">
@@ -42,13 +80,18 @@ $currentPage = basename($_SERVER['PHP_SELF']);
      MOBILE TOP BAR
 ============================================================= -->
 
+<?php if ($showMobileMenu): ?>
+
 <div
     class="sticky top-0 z-30 flex h-16 items-center
            border-b border-slate-200 bg-white px-4
            shadow-sm lg:hidden"
 >
 
-    <!-- Mobile Menu Button -->
+    <!-- ========================================================
+         Mobile Menu Button
+    ========================================================= -->
+
     <button
         id="mobileMenuButton"
         type="button"
@@ -61,7 +104,8 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                focus:outline-none focus:ring-2
                focus:ring-indigo-500"
     >
-        <!-- Hamburger icon -->
+
+        <!-- Hamburger Icon -->
         <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-6 w-6"
@@ -76,16 +120,25 @@ $currentPage = basename($_SERVER['PHP_SELF']);
                 d="M4 6h16M4 12h16M4 18h16"
             />
         </svg>
+
     </button>
 
-    <!-- Page title -->
+
+    <!-- ========================================================
+         Page Title
+    ========================================================= -->
+
     <div class="ml-3 min-w-0">
+
         <h1 class="truncate text-lg font-semibold text-slate-900">
             <?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>
         </h1>
+
     </div>
 
 </div>
+
+<?php endif; ?>
 
 
 <!-- ============================================================
