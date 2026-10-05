@@ -5,7 +5,7 @@ require_once __DIR__ . "/../../includes/api.php";
 
 require_login();
 
-if (current_role() !== 'Customer') {
+if (current_role() !== "Customer") {
     header("Location: ../admin/dashboard.php");
     exit;
 }
@@ -13,70 +13,137 @@ if (current_role() !== 'Customer') {
 $pageTitle = "Customer Dashboard";
 
 require_once __DIR__ . "/../../includes/data.php";
-require_once __DIR__ . "/../../includes/header.php";
-require_once __DIR__ . "/../../includes/sidebar.php";
 
 $user = current_user();
 
-$customerName = $user['name'] ?? 'Customer';
+$customerName =
+    $user["name"] ?? "Customer";
 
 /*
 |--------------------------------------------------------------------------
 | Customer dashboard data
 |--------------------------------------------------------------------------
-|
-| data.php gets these from:
-| GET /api/customer/dashboard
-| GET /api/customer/payments
-| GET /api/customer/lease
-| GET /api/customer/maintenance
-|--------------------------------------------------------------------------
 */
 
-$currentLease = $currentLease ?? [];
+$currentLease =
+    $currentLease ?? [];
 
-if (empty($currentLease) && !empty($leases)) {
-    $currentLease = $leases[0];
+if (
+    empty($currentLease) &&
+    !empty($leases)
+) {
+    $currentLease =
+        $leases[0];
 }
 
 $currentPayment = [];
 
 if (!empty($payments)) {
-    $currentPayment = $payments[0];
+    $currentPayment =
+        $payments[0];
 }
 
-$monthlyRent = (float) (
-    $currentLease['rent']
-    ?? $currentLease['monthlyRent']
-    ?? $currentPayment['amount']
+$monthlyRent = (float)(
+    $currentLease["rent"]
+    ?? $currentLease["monthlyRent"]
+    ?? $currentPayment["amount"]
     ?? 0
 );
 
-$nextPayment = $currentPayment['status'] ?? 'Pending';
+$latestPaymentStatus =
+    $currentPayment["status"]
+    ?? "Pending";
 
-$maintenanceForCustomer = $maintenanceRequests ?? [];
+$maintenanceForCustomer =
+    $maintenanceRequests
+    ?? [];
 
-$totalMaintenance = count($maintenanceForCustomer);
+$totalMaintenance =
+    count($maintenanceForCustomer);
 
 $pendingMaintenance = 0;
 
 foreach ($maintenanceForCustomer as $request) {
-    $status = strtolower($request['status'] ?? '');
+
+    $requestStatus =
+        strtolower(
+            $request["status"] ?? ""
+        );
 
     if (
-        $status === 'pending' ||
-        $status === 'assigned' ||
-        $status === 'in progress'
+        $requestStatus === "pending" ||
+        $requestStatus === "assigned" ||
+        $requestStatus === "in progress"
     ) {
         $pendingMaintenance++;
     }
 }
 
+/*
+|--------------------------------------------------------------------------
+| Property
+|--------------------------------------------------------------------------
+*/
+
+$dashboardProperty =
+    $currentLease["property"]
+    ?? "";
+
+if (
+    $dashboardProperty === "" &&
+    isset($currentLease["propertyId"]) &&
+    is_array($currentLease["propertyId"])
+) {
+    $dashboardProperty =
+        $currentLease["propertyId"]["name"]
+        ?? "";
+}
+
+if ($dashboardProperty === "") {
+    $dashboardProperty =
+        "No property assigned";
+}
+
+/*
+|--------------------------------------------------------------------------
+| Unit
+|--------------------------------------------------------------------------
+*/
+
+$dashboardUnit =
+    $currentLease["unit"]
+    ?? "";
+
+if (
+    $dashboardUnit === "" &&
+    isset($currentLease["unitId"]) &&
+    is_array($currentLease["unitId"])
+) {
+    $dashboardUnit =
+        $currentLease["unitId"]["unitNumber"]
+        ?? "";
+}
+
+if ($dashboardUnit === "") {
+    $dashboardUnit =
+        "Not assigned";
+}
+
+/*
+|--------------------------------------------------------------------------
+| Layout
+|--------------------------------------------------------------------------
+*/
+
+require_once __DIR__ . "/../../includes/header.php";
+require_once __DIR__ . "/../../includes/sidebar.php";
+
 ?>
 
 <div class="lg:pl-64">
 
-    <!-- Header -->
+    <!-- Customer Header -->
+
     <header class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
 
         <div class="ml-auto flex items-center gap-4">
@@ -84,7 +151,11 @@ foreach ($maintenanceForCustomer as $request) {
             <div class="hidden text-right sm:block">
 
                 <p class="text-sm font-semibold text-slate-800">
-                    <?= htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8') ?>
+                    <?= htmlspecialchars(
+                        $customerName,
+                        ENT_QUOTES,
+                        "UTF-8"
+                    ) ?>
                 </p>
 
                 <p class="text-xs text-slate-500">
@@ -94,11 +165,19 @@ foreach ($maintenanceForCustomer as $request) {
             </div>
 
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 font-semibold text-white">
+
                 <?= htmlspecialchars(
-                    strtoupper(substr($customerName, 0, 1)),
+                    strtoupper(
+                        substr(
+                            $customerName,
+                            0,
+                            1
+                        )
+                    ),
                     ENT_QUOTES,
-                    'UTF-8'
+                    "UTF-8"
                 ) ?>
+
             </div>
 
         </div>
@@ -106,9 +185,11 @@ foreach ($maintenanceForCustomer as $request) {
     </header>
 
     <!-- Main -->
+
     <main class="p-4 sm:p-6 lg:p-8">
 
         <!-- Welcome -->
+
         <div class="mb-8">
 
             <p class="text-sm font-medium text-indigo-600">
@@ -116,7 +197,11 @@ foreach ($maintenanceForCustomer as $request) {
             </p>
 
             <h1 class="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
-                Welcome, <?= htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8') ?>
+                Welcome, <?= htmlspecialchars(
+                    $customerName,
+                    ENT_QUOTES,
+                    "UTF-8"
+                ) ?>
             </h1>
 
             <p class="mt-2 text-sm text-slate-500">
@@ -126,9 +211,11 @@ foreach ($maintenanceForCustomer as $request) {
         </div>
 
         <!-- Stats -->
+
         <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
             <!-- Property -->
+
             <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
 
                 <p class="text-sm text-slate-500">
@@ -137,11 +224,9 @@ foreach ($maintenanceForCustomer as $request) {
 
                 <p class="mt-2 text-lg font-bold text-slate-900">
                     <?= htmlspecialchars(
-                        $currentLease['property']
-                        ?? $currentLease['propertyId']['name']
-                        ?? 'No property assigned',
+                        $dashboardProperty,
                         ENT_QUOTES,
-                        'UTF-8'
+                        "UTF-8"
                     ) ?>
                 </p>
 
@@ -155,6 +240,7 @@ foreach ($maintenanceForCustomer as $request) {
             </div>
 
             <!-- Unit -->
+
             <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
 
                 <p class="text-sm text-slate-500">
@@ -163,11 +249,9 @@ foreach ($maintenanceForCustomer as $request) {
 
                 <p class="mt-2 text-lg font-bold text-slate-900">
                     <?= htmlspecialchars(
-                        $currentLease['unit']
-                        ?? $currentLease['unitId']['unitNumber']
-                        ?? 'Not assigned',
+                        $dashboardUnit,
                         ENT_QUOTES,
-                        'UTF-8'
+                        "UTF-8"
                     ) ?>
                 </p>
 
@@ -180,7 +264,8 @@ foreach ($maintenanceForCustomer as $request) {
 
             </div>
 
-            <!-- Monthly Rent -->
+            <!-- Rent -->
+
             <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
 
                 <p class="text-sm text-slate-500">
@@ -188,7 +273,10 @@ foreach ($maintenanceForCustomer as $request) {
                 </p>
 
                 <p class="mt-2 text-2xl font-bold text-slate-900">
-                    KSh <?= number_format($monthlyRent) ?>
+                    KSh <?= number_format(
+                        $monthlyRent,
+                        2
+                    ) ?>
                 </p>
 
                 <p class="mt-2 text-xs text-slate-500">
@@ -197,7 +285,8 @@ foreach ($maintenanceForCustomer as $request) {
 
             </div>
 
-            <!-- Payment Status -->
+            <!-- Payment -->
+
             <div class="rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
 
                 <p class="text-sm text-slate-500">
@@ -206,9 +295,9 @@ foreach ($maintenanceForCustomer as $request) {
 
                 <p class="mt-2 text-lg font-bold text-slate-900">
                     <?= htmlspecialchars(
-                        $nextPayment,
+                        $latestPaymentStatus,
                         ENT_QUOTES,
-                        'UTF-8'
+                        "UTF-8"
                     ) ?>
                 </p>
 
@@ -224,6 +313,7 @@ foreach ($maintenanceForCustomer as $request) {
         </div>
 
         <!-- Quick Actions -->
+
         <div class="mt-8 grid gap-5 md:grid-cols-3">
 
             <a
@@ -263,7 +353,8 @@ foreach ($maintenanceForCustomer as $request) {
                 </p>
 
                 <p class="mt-3 text-xs text-slate-500">
-                    <?= $pendingMaintenance ?> active request(s)
+                    <?= $pendingMaintenance ?>
+                    active request(s)
                 </p>
 
             </a>

@@ -2,101 +2,104 @@
 
 $pageTitle = "Maintenance Requests";
 
-/*
-|--------------------------------------------------------------------------
-| Authentication
-|--------------------------------------------------------------------------
-*/
-
 require_once __DIR__ . "/../../includes/auth.php";
 require_once __DIR__ . "/../../includes/api.php";
 
 require_login();
 
+if (current_role() !== "Customer") {
+    header("Location: ../admin/dashboard.php");
+    exit;
+}
+
+$submitError = "";
+$submitSuccess = false;
+
 /*
 |--------------------------------------------------------------------------
-| Handle new request submission
+| Submit maintenance request
 |--------------------------------------------------------------------------
 */
 
-$submitError = '';
-$submitSuccess = false;
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    isset($_POST["issue"])
+) {
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['issue'])) {
+    $issue =
+        trim($_POST["issue"] ?? "");
 
-    $issue = trim($_POST['issue'] ?? '');
-    $priority = ucfirst(trim($_POST['priority'] ?? 'Medium'));
-    $description = trim($_POST['description'] ?? '');
+    $priority =
+        ucfirst(
+            trim($_POST["priority"] ?? "Medium")
+        );
 
-    if ($issue === '') {
-        $submitError = 'Please describe the issue.';
+    $description =
+        trim($_POST["description"] ?? "");
+
+    if ($issue === "") {
+
+        $submitError =
+            "Please describe the issue.";
+
     } else {
 
-        /*
-         * The API requires a unique maintenanceId to be supplied
-         * by the client - it does not generate one itself.
-         */
         $maintenanceId =
-            'MR-' . date('YmdHis') . '-' . strtoupper(substr(uniqid(), -5));
+            "MR-" .
+            date("YmdHis") .
+            "-" .
+            strtoupper(substr(uniqid(), -5));
 
-        $result = api_post('/customer/maintenance', [
-            'maintenanceId' => $maintenanceId,
-            'issue' => $issue,
-            'priority' => $priority,
-            'description' => $description,
-        ]);
+        $result = api_post(
+            "/customer/maintenance",
+            [
+                "maintenanceId" =>
+                    $maintenanceId,
 
-        if (!empty($result['success'])) {
-            header('Location: maintenance.php?submitted=1');
+                "issue" =>
+                    $issue,
+
+                "priority" =>
+                    $priority,
+
+                "description" =>
+                    $description,
+            ]
+        );
+
+        if (!empty($result["success"])) {
+
+            header(
+                "Location: maintenance.php?submitted=1"
+            );
+
             exit;
+
         } else {
+
             $submitError =
-                $result['message']
-                ?? 'Failed to submit request. Please try again.';
+                $result["message"]
+                ?? "Failed to submit request. Please try again.";
         }
     }
 }
 
-if (isset($_GET['submitted'])) {
+if (isset($_GET["submitted"])) {
     $submitSuccess = true;
 }
 
 /*
 |--------------------------------------------------------------------------
-| Customer-only access
-|--------------------------------------------------------------------------
-*/
-
-if (current_role() !== 'Customer') {
-    header("Location: ../admin/dashboard.php");
-    exit;
-}
-
-/*
-|--------------------------------------------------------------------------
-| Load data
+| Customer data
 |--------------------------------------------------------------------------
 */
 
 require_once __DIR__ . "/../../includes/data.php";
 
-/*
-|--------------------------------------------------------------------------
-| Current customer
-|--------------------------------------------------------------------------
-*/
-
 $user = current_user();
 
-$customerName = $user['name'] ?? '';
-
-/*
-|--------------------------------------------------------------------------
-| Get customer's maintenance requests
-|--------------------------------------------------------------------------
-*/
-
-$customerRequests = $maintenanceRequests;
+$customerRequests =
+    $maintenanceRequests ?? [];
 
 /*
 |--------------------------------------------------------------------------
@@ -104,7 +107,8 @@ $customerRequests = $maintenanceRequests;
 |--------------------------------------------------------------------------
 */
 
-$totalRequests = count($customerRequests);
+$totalRequests =
+    count($customerRequests);
 
 $pendingRequests = 0;
 $completedRequests = 0;
@@ -112,32 +116,54 @@ $urgentRequests = 0;
 
 foreach ($customerRequests as $request) {
 
-    $status = strtolower($request['status'] ?? '');
-    $priority = strtolower($request['priority'] ?? '');
+    $requestStatus =
+        strtolower(
+            $request["status"] ?? ""
+        );
+
+    $requestPriority =
+        strtolower(
+            $request["priority"] ?? ""
+        );
 
     if (
-        $status === 'pending' ||
-        $status === 'assigned' ||
-        $status === 'in progress'
+        $requestStatus === "pending" ||
+        $requestStatus === "assigned" ||
+        $requestStatus === "in progress"
     ) {
         $pendingRequests++;
     }
 
     if (
-        $status === 'completed' ||
-        $status === 'resolved'
+        $requestStatus === "completed" ||
+        $requestStatus === "resolved"
     ) {
         $completedRequests++;
     }
 
-    if ($priority === 'urgent') {
+    if ($requestPriority === "urgent") {
         $urgentRequests++;
     }
 }
 
 /*
 |--------------------------------------------------------------------------
-| Page layout
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+function maintenance_escape($value): string
+{
+    return htmlspecialchars(
+        (string)($value ?? ""),
+        ENT_QUOTES,
+        "UTF-8"
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Layout
 |--------------------------------------------------------------------------
 */
 
@@ -146,13 +172,12 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 ?>
 
-<main class="flex-1 lg:ml-64">
+<div class="lg:pl-64">
 
-    <?php require_once __DIR__ . "/../../includes/navbar.php"; ?>
+    <main class="min-h-screen p-4 sm:p-6 lg:p-8">
 
-    <div class="p-4 sm:p-6 lg:p-8">
+        <!-- Header -->
 
-        <!-- Page Header -->
         <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
             <div>
@@ -167,20 +192,16 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             </div>
 
-            <!-- New Request -->
             <button
                 type="button"
                 onclick="document.getElementById('requestModal').classList.remove('hidden')"
-                class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
-
+                class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            >
                 + New Request
-
             </button>
 
         </div>
 
-
-        <!-- Success message -->
         <?php if ($submitSuccess): ?>
 
             <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -189,12 +210,11 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         <?php endif; ?>
 
-
         <!-- Statistics -->
+
         <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
-            <!-- Total -->
-            <div class="rounded-xl border bg-white p-5">
+            <div class="rounded-xl border bg-white p-5 shadow-sm">
 
                 <p class="text-sm text-slate-500">
                     Total Requests
@@ -206,9 +226,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             </div>
 
-
-            <!-- Pending -->
-            <div class="rounded-xl border bg-white p-5">
+            <div class="rounded-xl border bg-white p-5 shadow-sm">
 
                 <p class="text-sm text-slate-500">
                     Active Requests
@@ -220,9 +238,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             </div>
 
-
-            <!-- Urgent -->
-            <div class="rounded-xl border bg-white p-5">
+            <div class="rounded-xl border bg-white p-5 shadow-sm">
 
                 <p class="text-sm text-slate-500">
                     Urgent
@@ -234,9 +250,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             </div>
 
-
-            <!-- Completed -->
-            <div class="rounded-xl border bg-white p-5">
+            <div class="rounded-xl border bg-white p-5 shadow-sm">
 
                 <p class="text-sm text-slate-500">
                     Completed
@@ -250,9 +264,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         </div>
 
-
         <!-- Requests -->
-        <div class="overflow-hidden rounded-xl border bg-white">
+
+        <section class="overflow-hidden rounded-xl border bg-white shadow-sm">
 
             <div class="border-b px-6 py-5">
 
@@ -265,7 +279,6 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 </p>
 
             </div>
-
 
             <?php if (!empty($customerRequests)): ?>
 
@@ -305,131 +318,161 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                         </thead>
 
-
                         <tbody class="divide-y">
 
                             <?php foreach ($customerRequests as $request): ?>
 
                                 <?php
 
-                                $status = strtolower($request['status'] ?? 'pending');
+                                $requestStatus =
+                                    strtolower(
+                                        $request["status"] ?? "pending"
+                                    );
 
-                                $priority = strtolower($request['priority'] ?? 'normal');
+                                $requestPriority =
+                                    strtolower(
+                                        $request["priority"] ?? "normal"
+                                    );
 
-                                $statusClass = match ($status) {
+                                $statusClass = match ($requestStatus) {
 
-                                    'completed',
-                                    'resolved'
-                                        => 'bg-emerald-50 text-emerald-700',
+                                    "completed",
+                                    "resolved" =>
+                                        "bg-emerald-50 text-emerald-700",
 
-                                    'pending'
-                                        => 'bg-amber-50 text-amber-700',
+                                    "pending" =>
+                                        "bg-amber-50 text-amber-700",
 
-                                    'assigned',
-                                    'in progress'
-                                        => 'bg-blue-50 text-blue-700',
+                                    "assigned",
+                                    "in progress" =>
+                                        "bg-blue-50 text-blue-700",
 
-                                    default
-                                        => 'bg-slate-100 text-slate-700',
+                                    default =>
+                                        "bg-slate-100 text-slate-700",
                                 };
 
+                                $priorityClass = match ($requestPriority) {
 
-                                $priorityClass = match ($priority) {
+                                    "urgent",
+                                    "high" =>
+                                        "bg-red-50 text-red-700",
 
-                                    'urgent',
-                                    'high'
-                                        => 'bg-red-50 text-red-700',
+                                    "medium" =>
+                                        "bg-amber-50 text-amber-700",
 
-                                    'medium'
-                                        => 'bg-amber-50 text-amber-700',
-
-                                    default
-                                        => 'bg-slate-100 text-slate-700',
+                                    default =>
+                                        "bg-slate-100 text-slate-700",
                                 };
+
+                                $requestId =
+                                    $request["maintenanceId"]
+                                    ?? $request["id"]
+                                    ?? $request["_id"]
+                                    ?? "N/A";
+
+                                $issue =
+                                    $request["issue"]
+                                    ?? $request["description"]
+                                    ?? "Maintenance issue";
+
+                                $property =
+                                    $request["property"]
+                                    ?? "";
+
+                                $unit =
+                                    $request["unit"]
+                                    ?? "";
+
+                                /*
+                                |--------------------------------------------------------------------------
+                                | Handle populated API relationships
+                                |--------------------------------------------------------------------------
+                                */
+
+                                if (
+                                    isset($request["propertyId"]) &&
+                                    is_array($request["propertyId"])
+                                ) {
+                                    $property =
+                                        $request["propertyId"]["name"]
+                                        ?? $property;
+                                }
+
+                                if (
+                                    isset($request["unitId"]) &&
+                                    is_array($request["unitId"])
+                                ) {
+                                    $unit =
+                                        $request["unitId"]["unitNumber"]
+                                        ?? $unit;
+                                }
 
                                 ?>
 
                                 <tr class="hover:bg-slate-50">
 
-                                    <!-- Request ID -->
                                     <td class="px-6 py-4 font-medium text-slate-900">
-
-                                        <?= htmlspecialchars(
-                                            $request['id'] ?? 'N/A'
-                                        ) ?>
-
+                                        <?= maintenance_escape($requestId) ?>
                                     </td>
 
-
-                                    <!-- Issue -->
                                     <td class="px-6 py-4">
 
                                         <div class="font-medium text-slate-900">
-
-                                            <?= htmlspecialchars(
-                                                $request['issue']
-                                                ?? $request['description']
-                                                ?? 'Maintenance issue'
-                                            ) ?>
-
+                                            <?= maintenance_escape($issue) ?>
                                         </div>
 
+                                        <?php if (!empty($request["description"])): ?>
+
+                                            <div class="mt-1 max-w-xs text-xs text-slate-500">
+                                                <?= maintenance_escape($request["description"]) ?>
+                                            </div>
+
+                                        <?php endif; ?>
+
                                     </td>
 
-
-                                    <!-- Property -->
                                     <td class="px-6 py-4 text-slate-600">
-
-                                        <?= htmlspecialchars(
-                                            $request['property']
-                                            ?? 'N/A'
+                                        <?= maintenance_escape(
+                                            $property !== ""
+                                                ? $property
+                                                : "N/A"
                                         ) ?>
-
                                     </td>
 
-
-                                    <!-- Unit -->
                                     <td class="px-6 py-4 text-slate-600">
-
-                                        <?= htmlspecialchars(
-                                            $request['unit']
-                                            ?? 'N/A'
+                                        <?= maintenance_escape(
+                                            $unit !== ""
+                                                ? $unit
+                                                : "N/A"
                                         ) ?>
-
                                     </td>
 
-
-                                    <!-- Priority -->
                                     <td class="px-6 py-4">
 
                                         <span
-                                            class="inline-flex rounded-full px-3 py-1 text-xs font-medium <?= $priorityClass ?>">
-
-                                            <?= htmlspecialchars(
+                                            class="inline-flex rounded-full px-3 py-1 text-xs font-medium <?= $priorityClass ?>"
+                                        >
+                                            <?= maintenance_escape(
                                                 ucfirst(
-                                                    $request['priority']
-                                                    ?? 'Normal'
+                                                    $request["priority"]
+                                                    ?? "Normal"
                                                 )
                                             ) ?>
-
                                         </span>
 
                                     </td>
 
-
-                                    <!-- Status -->
                                     <td class="px-6 py-4">
 
                                         <span
-                                            class="inline-flex rounded-full px-3 py-1 text-xs font-medium <?= $statusClass ?>">
-
-                                            <?= htmlspecialchars(
+                                            class="inline-flex rounded-full px-3 py-1 text-xs font-medium <?= $statusClass ?>"
+                                        >
+                                            <?= maintenance_escape(
                                                 ucfirst(
-                                                    $request['status']
-                                                    ?? 'Pending'
+                                                    $request["status"]
+                                                    ?? "Pending"
                                                 )
                                             ) ?>
-
                                         </span>
 
                                     </td>
@@ -446,11 +489,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             <?php else: ?>
 
-                <!-- No Requests -->
                 <div class="p-10 text-center">
 
-                    <div
-                        class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-3xl">
+                    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-3xl">
                         🔧
                     </div>
 
@@ -465,34 +506,30 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     <button
                         type="button"
                         onclick="document.getElementById('requestModal').classList.remove('hidden')"
-                        class="mt-5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
-
+                        class="mt-5 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                    >
                         Submit Request
-
                     </button>
 
                 </div>
 
             <?php endif; ?>
 
-        </div>
+        </section>
 
-    </div>
+    </main>
 
-</main>
+</div>
 
-
-<!-- ============================================================= -->
-<!-- NEW MAINTENANCE REQUEST MODAL -->
-<!-- ============================================================= -->
+<!-- Maintenance Modal -->
 
 <div
     id="requestModal"
-    class="fixed inset-0 z-[100] <?= $submitError ? '' : 'hidden' ?> overflow-y-auto bg-black/50 px-4 py-8">
+    class="fixed inset-0 z-[100] <?= $submitError ? "" : "hidden" ?> overflow-y-auto bg-black/50 px-4 py-8"
+>
 
     <div class="mx-auto max-w-lg rounded-xl bg-white shadow-xl">
 
-        <!-- Modal Header -->
         <div class="flex items-center justify-between border-b px-6 py-5">
 
             <div>
@@ -510,26 +547,21 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             <button
                 type="button"
                 onclick="document.getElementById('requestModal').classList.add('hidden')"
-                class="text-2xl text-slate-400 hover:text-slate-700">
-
+                class="text-2xl text-slate-400 hover:text-slate-700"
+            >
                 ×
-
             </button>
 
         </div>
 
-
-        <!-- Error message -->
         <?php if ($submitError): ?>
 
             <div class="mx-6 mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <?= htmlspecialchars($submitError) ?>
+                <?= maintenance_escape($submitError) ?>
             </div>
 
         <?php endif; ?>
 
-
-        <!-- Form -->
         <form method="POST" class="space-y-5 p-6">
 
             <div>
@@ -542,12 +574,12 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     type="text"
                     name="issue"
                     required
-                    value="<?= htmlspecialchars($_POST['issue'] ?? '') ?>"
+                    value="<?= maintenance_escape($_POST["issue"] ?? "") ?>"
                     placeholder="e.g. Broken water pipe"
-                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
 
             </div>
-
 
             <div>
 
@@ -555,32 +587,35 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     Priority
                 </label>
 
-                <?php $selectedPriority = $_POST['priority'] ?? 'Medium'; ?>
+                <?php
+                $selectedPriority =
+                    $_POST["priority"] ?? "Medium";
+                ?>
 
                 <select
                     name="priority"
-                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
 
-                    <option value="Low" <?= $selectedPriority === 'Low' ? 'selected' : '' ?>>
+                    <option value="Low" <?= $selectedPriority === "Low" ? "selected" : "" ?>>
                         Low
                     </option>
 
-                    <option value="Medium" <?= $selectedPriority === 'Medium' ? 'selected' : '' ?>>
+                    <option value="Medium" <?= $selectedPriority === "Medium" ? "selected" : "" ?>>
                         Medium
                     </option>
 
-                    <option value="High" <?= $selectedPriority === 'High' ? 'selected' : '' ?>>
+                    <option value="High" <?= $selectedPriority === "High" ? "selected" : "" ?>>
                         High
                     </option>
 
-                    <option value="Urgent" <?= $selectedPriority === 'Urgent' ? 'selected' : '' ?>>
+                    <option value="Urgent" <?= $selectedPriority === "Urgent" ? "selected" : "" ?>>
                         Urgent
                     </option>
 
                 </select>
 
             </div>
-
 
             <div>
 
@@ -592,28 +627,26 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     name="description"
                     rows="4"
                     placeholder="Describe the problem..."
-                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"><?= htmlspecialchars($_POST['description'] ?? '') ?></textarea>
+                    class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                ><?= maintenance_escape($_POST["description"] ?? "") ?></textarea>
 
             </div>
-
 
             <div class="flex justify-end gap-3 pt-2">
 
                 <button
                     type="button"
                     onclick="document.getElementById('requestModal').classList.add('hidden')"
-                    class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-
+                    class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
                     Cancel
-
                 </button>
 
                 <button
                     type="submit"
-                    class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
-
+                    class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
                     Submit Request
-
                 </button>
 
             </div>
@@ -623,6 +656,5 @@ require_once __DIR__ . "/../../includes/sidebar.php";
     </div>
 
 </div>
-
 
 <?php require_once __DIR__ . "/../../includes/footer.php"; ?>

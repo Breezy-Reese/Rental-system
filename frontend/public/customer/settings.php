@@ -1,6 +1,18 @@
 <?php
 
+/**
+ * ============================================================
+ * PropertyPro - Customer Settings
+ * ============================================================
+ */
+
 $pageTitle = "Settings";
+
+/*
+|--------------------------------------------------------------------------
+| Authentication
+|--------------------------------------------------------------------------
+*/
 
 require_once __DIR__ . "/../../includes/auth.php";
 require_login();
@@ -10,519 +22,337 @@ require_login();
 | Customer-only access
 |--------------------------------------------------------------------------
 */
+
 if (current_role() !== 'Customer') {
     header("Location: ../admin/dashboard.php");
     exit;
 }
 
+/*
+|--------------------------------------------------------------------------
+| Current customer
+|--------------------------------------------------------------------------
+*/
+
 $user = current_user();
 
-$name = $user['name'] ?? 'Customer';
-$email = $user['email'] ?? '';
+$name   = $user['name'] ?? 'Customer';
+$email  = $user['email'] ?? '';
+$role   = $user['role'] ?? 'Customer';
+$userId = $user['id'] ?? 'N/A';
 
 /*
 |--------------------------------------------------------------------------
-| Default settings
+| User initials
 |--------------------------------------------------------------------------
 */
-if (!isset($_SESSION['settings'])) {
-    $_SESSION['settings'] = [
-        'email_notifications' => true,
-        'payment_reminders' => true,
-        'maintenance_updates' => true,
-        'marketing_notifications' => false,
-        'language' => 'English',
-        'timezone' => 'Africa/Nairobi',
-    ];
-}
 
-$settings = $_SESSION['settings'];
+$nameParts = preg_split('/\s+/', trim($name));
 
-$successMessage = '';
-$errorMessage = '';
+$initials = '';
 
-/*
-|--------------------------------------------------------------------------
-| Save settings
-|--------------------------------------------------------------------------
-*/
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    $emailNotifications = isset($_POST['email_notifications']);
-    $paymentReminders = isset($_POST['payment_reminders']);
-    $maintenanceUpdates = isset($_POST['maintenance_updates']);
-    $marketingNotifications = isset($_POST['marketing_notifications']);
-
-    $language = $_POST['language'] ?? 'English';
-    $timezone = $_POST['timezone'] ?? 'Africa/Nairobi';
-
-    $allowedLanguages = [
-        'English',
-        'Swahili'
-    ];
-
-    $allowedTimezones = [
-        'Africa/Nairobi',
-        'Africa/Kampala',
-        'Africa/Dar_es_Salaam',
-        'UTC'
-    ];
-
-    if (!in_array($language, $allowedLanguages, true)) {
-        $language = 'English';
+foreach ($nameParts as $part) {
+    if ($part !== '') {
+        $initials .= strtoupper(substr($part, 0, 1));
     }
+}
 
-    if (!in_array($timezone, $allowedTimezones, true)) {
-        $timezone = 'Africa/Nairobi';
-    }
+$initials = substr($initials, 0, 2);
 
-    $_SESSION['settings'] = [
-        'email_notifications' => $emailNotifications,
-        'payment_reminders' => $paymentReminders,
-        'maintenance_updates' => $maintenanceUpdates,
-        'marketing_notifications' => $marketingNotifications,
-        'language' => $language,
-        'timezone' => $timezone,
-    ];
-
-    $settings = $_SESSION['settings'];
-
-    $successMessage = 'Your settings have been saved successfully.';
+if ($initials === '') {
+    $initials = 'CU';
 }
 
 /*
 |--------------------------------------------------------------------------
-| Escape output
+| Page layout
 |--------------------------------------------------------------------------
 */
-function settings_e($value): string
-{
-    return htmlspecialchars(
-        (string) $value,
-        ENT_QUOTES,
-        'UTF-8'
-    );
-}
 
 require_once __DIR__ . "/../../includes/header.php";
 require_once __DIR__ . "/../../includes/sidebar.php";
+
 ?>
 
 <main class="flex-1 lg:ml-64">
 
-    <?php require_once __DIR__ . "/../../includes/navbar.php"; ?>
-
     <div class="p-4 sm:p-6 lg:p-8">
 
+        <!-- Page Header -->
         <div class="mb-8">
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-                <div>
-                    <h1 class="text-2xl font-bold text-slate-900">
-                        Settings
-                    </h1>
+            <h1 class="text-2xl font-bold text-slate-900">
+                Settings
+            </h1>
 
-                    <p class="mt-1 text-sm text-slate-500">
-                        Manage your account preferences and notifications.
-                    </p>
-                </div>
+            <p class="mt-1 text-sm text-slate-500">
+                Manage your account settings and preferences.
+            </p>
 
-                <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700">
-                        <?= settings_e(strtoupper(substr($name, 0, 1))) ?>
-                    </div>
-
-                    <div>
-                        <p class="text-sm font-semibold text-slate-900">
-                            <?= settings_e($name) ?>
-                        </p>
-
-                        <p class="text-xs text-slate-500">
-                            <?= settings_e($email) ?>
-                        </p>
-                    </div>
-
-                </div>
-
-            </div>
         </div>
 
-        <?php if ($successMessage): ?>
+        <div class="grid gap-6 lg:grid-cols-3">
 
-            <div class="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
+            <!-- Profile Summary -->
+            <div class="rounded-xl border bg-white p-6">
 
-                <div class="text-lg">
-                    ✓
-                </div>
+                <div class="flex flex-col items-center text-center">
 
-                <div>
-                    <p class="font-semibold">
-                        Settings updated
+                    <!-- Avatar -->
+                    <div
+                        class="flex h-24 w-24 items-center justify-center rounded-full bg-indigo-600 text-2xl font-bold text-white"
+                    >
+                        <?= htmlspecialchars($initials, ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+
+                    <!-- Name -->
+                    <h2 class="mt-4 text-xl font-bold text-slate-900">
+                        <?= htmlspecialchars($name, ENT_QUOTES, 'UTF-8') ?>
+                    </h2>
+
+                    <!-- Email -->
+                    <p class="mt-1 text-sm text-slate-500">
+                        <?= htmlspecialchars($email, ENT_QUOTES, 'UTF-8') ?>
                     </p>
 
-                    <p class="mt-1 text-sm">
-                        <?= settings_e($successMessage) ?>
-                    </p>
+                    <!-- Role -->
+                    <span
+                        class="mt-4 rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium text-indigo-700"
+                    >
+                        <?= htmlspecialchars($role, ENT_QUOTES, 'UTF-8') ?>
+                    </span>
+
                 </div>
 
             </div>
 
-        <?php endif; ?>
+            <!-- Settings -->
+            <div class="lg:col-span-2 space-y-6">
 
-        <form method="POST" action="settings.php">
+                <!-- Account Settings -->
+                <div class="overflow-hidden rounded-xl border bg-white">
 
-            <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                    <div class="border-b px-6 py-5">
 
-                <div class="space-y-6 xl:col-span-2">
+                        <h2 class="text-lg font-semibold text-slate-900">
+                            Account Settings
+                        </h2>
 
-                    <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <p class="mt-1 text-sm text-slate-500">
+                            View your account information.
+                        </p>
 
-                        <div class="border-b border-slate-200 px-6 py-5">
+                    </div>
 
-                            <h2 class="text-lg font-semibold text-slate-900">
-                                Notifications
-                            </h2>
+                    <div class="space-y-6 p-6">
 
-                            <p class="mt-1 text-sm text-slate-500">
-                                Choose which notifications you would like to receive.
-                            </p>
+                        <!-- Full Name -->
+                        <div>
 
-                        </div>
-
-                        <div class="divide-y divide-slate-100">
-
-                            <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
-
-                                <div>
-                                    <p class="font-medium text-slate-900">
-                                        Email notifications
-                                    </p>
-
-                                    <p class="mt-1 text-sm text-slate-500">
-                                        Receive important account notifications by email.
-                                    </p>
-                                </div>
-
-                                <input
-                                    type="checkbox"
-                                    name="email_notifications"
-                                    value="1"
-                                    class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                    <?= !empty($settings['email_notifications']) ? 'checked' : '' ?>
-                                >
-
+                            <label
+                                class="block text-sm font-medium text-slate-700"
+                            >
+                                Full Name
                             </label>
 
-                            <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
-
-                                <div>
-                                    <p class="font-medium text-slate-900">
-                                        Payment reminders
-                                    </p>
-
-                                    <p class="mt-1 text-sm text-slate-500">
-                                        Get reminders about upcoming or outstanding rent payments.
-                                    </p>
-                                </div>
-
-                                <input
-                                    type="checkbox"
-                                    name="payment_reminders"
-                                    value="1"
-                                    class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                    <?= !empty($settings['payment_reminders']) ? 'checked' : '' ?>
-                                >
-
-                            </label>
-
-                            <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
-
-                                <div>
-                                    <p class="font-medium text-slate-900">
-                                        Maintenance updates
-                                    </p>
-
-                                    <p class="mt-1 text-sm text-slate-500">
-                                        Receive updates when your maintenance request changes status.
-                                    </p>
-                                </div>
-
-                                <input
-                                    type="checkbox"
-                                    name="maintenance_updates"
-                                    value="1"
-                                    class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                    <?= !empty($settings['maintenance_updates']) ? 'checked' : '' ?>
-                                >
-
-                            </label>
-
-                            <label class="flex cursor-pointer items-center justify-between gap-4 px-6 py-5">
-
-                                <div>
-                                    <p class="font-medium text-slate-900">
-                                        General notifications
-                                    </p>
-
-                                    <p class="mt-1 text-sm text-slate-500">
-                                        Receive optional PropertyPro announcements and updates.
-                                    </p>
-                                </div>
-
-                                <input
-                                    type="checkbox"
-                                    name="marketing_notifications"
-                                    value="1"
-                                    class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                    <?= !empty($settings['marketing_notifications']) ? 'checked' : '' ?>
-                                >
-
-                            </label>
-
-                        </div>
-
-                    </section>
-
-                    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
-
-                        <div class="border-b border-slate-200 px-6 py-5">
-
-                            <h2 class="text-lg font-semibold text-slate-900">
-                                Regional Preferences
-                            </h2>
-
-                            <p class="mt-1 text-sm text-slate-500">
-                                Choose your preferred language and timezone.
-                            </p>
-
-                        </div>
-
-                        <div class="grid grid-cols-1 gap-5 p-6 md:grid-cols-2">
-
-                            <div>
-
-                                <label
-                                    for="language"
-                                    class="mb-2 block text-sm font-medium text-slate-700"
-                                >
-                                    Language
-                                </label>
-
-                                <select
-                                    id="language"
-                                    name="language"
-                                    class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                                >
-
-                                    <option
-                                        value="English"
-                                        <?= $settings['language'] === 'English' ? 'selected' : '' ?>
-                                    >
-                                        English
-                                    </option>
-
-                                    <option
-                                        value="Swahili"
-                                        <?= $settings['language'] === 'Swahili' ? 'selected' : '' ?>
-                                    >
-                                        Swahili
-                                    </option>
-
-                                </select>
-
-                            </div>
-
-                            <div>
-
-                                <label
-                                    for="timezone"
-                                    class="mb-2 block text-sm font-medium text-slate-700"
-                                >
-                                    Timezone
-                                </label>
-
-                                <select
-                                    id="timezone"
-                                    name="timezone"
-                                    class="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                                >
-
-                                    <option
-                                        value="Africa/Nairobi"
-                                        <?= $settings['timezone'] === 'Africa/Nairobi' ? 'selected' : '' ?>
-                                    >
-                                        East Africa Time (Nairobi)
-                                    </option>
-
-                                    <option
-                                        value="Africa/Kampala"
-                                        <?= $settings['timezone'] === 'Africa/Kampala' ? 'selected' : '' ?>
-                                    >
-                                        East Africa Time (Kampala)
-                                    </option>
-
-                                    <option
-                                        value="Africa/Dar_es_Salaam"
-                                        <?= $settings['timezone'] === 'Africa/Dar_es_Salaam' ? 'selected' : '' ?>
-                                    >
-                                        East Africa Time (Dar es Salaam)
-                                    </option>
-
-                                    <option
-                                        value="UTC"
-                                        <?= $settings['timezone'] === 'UTC' ? 'selected' : '' ?>
-                                    >
-                                        UTC
-                                    </option>
-
-                                </select>
-
+                            <div
+                                class="mt-2 rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-900"
+                            >
+                                <?= htmlspecialchars($name, ENT_QUOTES, 'UTF-8') ?>
                             </div>
 
                         </div>
 
-                    </section>
+                        <!-- Email -->
+                        <div>
 
-                    <div class="flex justify-end">
+                            <label
+                                class="block text-sm font-medium text-slate-700"
+                            >
+                                Email Address
+                            </label>
 
-                        <button
-                            type="submit"
-                            class="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                        >
-                            Save Changes
-                        </button>
+                            <div
+                                class="mt-2 rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-900"
+                            >
+                                <?= htmlspecialchars($email, ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+
+                        </div>
+
+                        <!-- Account Type -->
+                        <div>
+
+                            <label
+                                class="block text-sm font-medium text-slate-700"
+                            >
+                                Account Type
+                            </label>
+
+                            <div
+                                class="mt-2 rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-900"
+                            >
+                                Customer
+                            </div>
+
+                        </div>
+
+                        <!-- Account ID -->
+                        <div>
+
+                            <label
+                                class="block text-sm font-medium text-slate-700"
+                            >
+                                Account ID
+                            </label>
+
+                            <div
+                                class="mt-2 break-all rounded-lg border bg-slate-50 px-4 py-3 text-sm text-slate-900"
+                            >
+                                <?= htmlspecialchars($userId, ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+
+                        </div>
 
                     </div>
 
                 </div>
 
-                <div class="space-y-6">
+                <!-- Security -->
+                <div class="overflow-hidden rounded-xl border bg-white">
 
-                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <div class="border-b px-6 py-5">
 
                         <h2 class="text-lg font-semibold text-slate-900">
-                            Account
+                            Security
                         </h2>
 
-                        <div class="mt-5 space-y-4">
+                        <p class="mt-1 text-sm text-slate-500">
+                            Manage your account security.
+                        </p>
+
+                    </div>
+
+                    <div class="p-6">
+
+                        <div
+                            class="flex flex-col gap-4 rounded-lg border bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
+                        >
 
                             <div>
-                                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                    Name
+
+                                <h3 class="font-medium text-slate-900">
+                                    Password
+                                </h3>
+
+                                <p class="mt-1 text-sm text-slate-500">
+                                    Keep your account secure with a strong password.
                                 </p>
 
-                                <p class="mt-1 text-sm font-medium text-slate-800">
-                                    <?= settings_e($name) ?>
-                                </p>
                             </div>
 
-                            <div>
-                                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                    Email
-                                </p>
-
-                                <p class="mt-1 break-all text-sm font-medium text-slate-800">
-                                    <?= settings_e($email) ?>
-                                </p>
-                            </div>
-
-                            <div>
-                                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">
-                                    Account Type
-                                </p>
-
-                                <p class="mt-1 text-sm font-medium text-slate-800">
-                                    Customer
-                                </p>
-                            </div>
+                            <a
+                                href="profile.php"
+                                class="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+                            >
+                                Account Profile
+                            </a>
 
                         </div>
 
+                    </div>
+
+                </div>
+
+                <!-- Rental Settings -->
+                <div class="overflow-hidden rounded-xl border bg-white">
+
+                    <div class="border-b px-6 py-5">
+
+                        <h2 class="text-lg font-semibold text-slate-900">
+                            Rental Account
+                        </h2>
+
+                        <p class="mt-1 text-sm text-slate-500">
+                            Quickly access your rental information.
+                        </p>
+
+                    </div>
+
+                    <div class="grid gap-4 p-6 sm:grid-cols-3">
+
+                        <!-- Lease -->
                         <a
-                            href="profile.php"
-                            class="mt-6 block rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            href="leases.php"
+                            class="rounded-lg border p-4 transition hover:border-indigo-300 hover:bg-indigo-50"
                         >
-                            View My Profile
+
+                            <div class="text-2xl">
+                                📄
+                            </div>
+
+                            <h3 class="mt-2 font-semibold text-slate-900">
+                                My Lease
+                            </h3>
+
+                            <p class="mt-1 text-xs text-slate-500">
+                                View your lease.
+                            </p>
+
                         </a>
 
-                    </section>
+                        <!-- Payments -->
+                        <a
+                            href="payments.php"
+                            class="rounded-lg border p-4 transition hover:border-indigo-300 hover:bg-indigo-50"
+                        >
 
-                    <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-
-                        <h2 class="text-lg font-semibold text-slate-900">
-                            My Rental
-                        </h2>
-
-                        <div class="mt-4 space-y-2">
-
-                            <a
-                                href="leases.php"
-                                class="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700"
-                            >
-                                <span>My Lease</span>
-                                <span>→</span>
-                            </a>
-
-                            <a
-                                href="payments.php"
-                                class="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700"
-                            >
-                                <span>My Payments</span>
-                                <span>→</span>
-                            </a>
-
-                            <a
-                                href="maintenance.php"
-                                class="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700"
-                            >
-                                <span>Maintenance Requests</span>
-                                <span>→</span>
-                            </a>
-
-                        </div>
-
-                    </section>
-
-                    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-
-                        <div class="flex gap-3">
-
-                            <div class="text-xl">
-                                🔒
+                            <div class="text-2xl">
+                                💳
                             </div>
 
-                            <div>
+                            <h3 class="mt-2 font-semibold text-slate-900">
+                                My Payments
+                            </h3>
 
-                                <h2 class="font-semibold text-amber-900">
-                                    Account Security
-                                </h2>
+                            <p class="mt-1 text-xs text-slate-500">
+                                View payments.
+                            </p>
 
-                                <p class="mt-2 text-sm leading-6 text-amber-800">
-                                    Keep your account information private and use a strong password.
-                                </p>
+                        </a>
 
-                                <a
-                                    href="profile.php"
-                                    class="mt-4 inline-block text-sm font-semibold text-amber-900 hover:underline"
-                                >
-                                    Manage account →
-                                </a>
+                        <!-- Maintenance -->
+                        <a
+                            href="maintenance.php"
+                            class="rounded-lg border p-4 transition hover:border-indigo-300 hover:bg-indigo-50"
+                        >
 
+                            <div class="text-2xl">
+                                🔧
                             </div>
 
-                        </div>
+                            <h3 class="mt-2 font-semibold text-slate-900">
+                                Maintenance
+                            </h3>
 
-                    </section>
+                            <p class="mt-1 text-xs text-slate-500">
+                                View requests.
+                            </p>
+
+                        </a>
+
+                    </div>
 
                 </div>
 
             </div>
 
-        </form>
+        </div>
 
     </div>
 
 </main>
 
-<?php require_once __DIR__ . "/../../includes/footer.php"; ?>
+<?php
+require_once __DIR__ . "/../../includes/footer.php";
+?>

@@ -7,7 +7,7 @@ require_once __DIR__ . "/../../includes/api.php";
 
 require_login();
 
-if (current_role() !== 'Customer') {
+if (current_role() !== "Customer") {
     header("Location: ../admin/dashboard.php");
     exit;
 }
@@ -16,271 +16,235 @@ require_once __DIR__ . "/../../includes/data.php";
 
 $user = current_user();
 
-$customerName = $user['name'] ?? 'Customer';
+$customerName = $user["name"] ?? "Customer";
 
-$successMessage = '';
-$errorMessage = '';
+$successMessage = "";
+$errorMessage = "";
 
 /*
 |--------------------------------------------------------------------------
-| Customer Unit Information
+| Helpers
 |--------------------------------------------------------------------------
 */
 
-$customerUnitId = '';
-$customerUnitNumber = '';
-$customerPropertyName = '';
+function customer_payment_escape($value): string
+{
+    return htmlspecialchars(
+        (string)($value ?? ""),
+        ENT_QUOTES,
+        "UTF-8"
+    );
+}
+
+function customer_payment_date($date): string
+{
+    if (empty($date)) {
+        return "-";
+    }
+
+    $timestamp = strtotime((string)$date);
+
+    if ($timestamp === false) {
+        return (string)$date;
+    }
+
+    return date("d M Y", $timestamp);
+}
+
+/*
+|--------------------------------------------------------------------------
+| Customer unit information
+|--------------------------------------------------------------------------
+*/
+
+$customerUnitId = "";
+$customerUnitNumber = "";
+$customerPropertyName = "";
 $customerRent = 0;
 
 /*
- * Get unit information from the customer tenant record.
- */
+|--------------------------------------------------------------------------
+| Tenant information
+|--------------------------------------------------------------------------
+*/
+
 if (!empty($customerTenant)) {
 
     if (
-        isset($customerTenant['unitId']) &&
-        is_array($customerTenant['unitId'])
+        isset($customerTenant["unitId"]) &&
+        is_array($customerTenant["unitId"])
     ) {
-
         $customerUnitId =
-            $customerTenant['unitId']['_id']
-            ?? $customerTenant['unitId']['id']
-            ?? '';
+            $customerTenant["unitId"]["_id"]
+            ?? $customerTenant["unitId"]["id"]
+            ?? "";
 
         $customerUnitNumber =
-            $customerTenant['unitId']['unitNumber']
-            ?? $customerTenant['unitId']['unit']
-            ?? '';
-
+            $customerTenant["unitId"]["unitNumber"]
+            ?? $customerTenant["unitId"]["unit"]
+            ?? "";
     } else {
 
         $customerUnitId =
-            $customerTenant['unitId']
-            ?? $customerTenant['unit_id']
-            ?? '';
+            $customerTenant["unitId"]
+            ?? $customerTenant["unit_id"]
+            ?? "";
 
         $customerUnitNumber =
-            $customerTenant['unitNumber']
-            ?? $customerTenant['unit']
-            ?? '';
+            $customerTenant["unitNumber"]
+            ?? $customerTenant["unit"]
+            ?? "";
     }
 
-    /*
-     * Property.
-     */
     if (
-        isset($customerTenant['propertyId']) &&
-        is_array($customerTenant['propertyId'])
+        isset($customerTenant["propertyId"]) &&
+        is_array($customerTenant["propertyId"])
     ) {
-
         $customerPropertyName =
-            $customerTenant['propertyId']['name']
-            ?? '';
-
+            $customerTenant["propertyId"]["name"]
+            ?? "";
     } else {
 
         $customerPropertyName =
-            $customerTenant['property']
-            ?? $customerTenant['propertyName']
-            ?? '';
+            $customerTenant["property"]
+            ?? $customerTenant["propertyName"]
+            ?? "";
     }
 }
 
 /*
 |--------------------------------------------------------------------------
-| Get unit information from current lease if necessary
+| Current lease fallback
 |--------------------------------------------------------------------------
 */
 
 if (!empty($currentLease)) {
 
-    /*
-     * Unit.
-     */
     if (
-        isset($currentLease['unitId']) &&
-        is_array($currentLease['unitId'])
+        isset($currentLease["unitId"]) &&
+        is_array($currentLease["unitId"])
     ) {
 
-        if ($customerUnitId === '') {
-
+        if ($customerUnitId === "") {
             $customerUnitId =
-                $currentLease['unitId']['_id']
-                ?? $currentLease['unitId']['id']
-                ?? '';
+                $currentLease["unitId"]["_id"]
+                ?? $currentLease["unitId"]["id"]
+                ?? "";
         }
 
-        if ($customerUnitNumber === '') {
-
+        if ($customerUnitNumber === "") {
             $customerUnitNumber =
-                $currentLease['unitId']['unitNumber']
-                ?? $currentLease['unitId']['unit']
-                ?? '';
+                $currentLease["unitId"]["unitNumber"]
+                ?? $currentLease["unitId"]["unit"]
+                ?? "";
         }
 
     } else {
 
-        if ($customerUnitId === '') {
-
+        if ($customerUnitId === "") {
             $customerUnitId =
-                $currentLease['unitId']
-                ?? $currentLease['unit_id']
-                ?? '';
+                $currentLease["unitId"]
+                ?? $currentLease["unit_id"]
+                ?? "";
         }
 
-        if ($customerUnitNumber === '') {
-
+        if ($customerUnitNumber === "") {
             $customerUnitNumber =
-                $currentLease['unitNumber']
-                ?? $currentLease['unit']
-                ?? '';
+                $currentLease["unitNumber"]
+                ?? $currentLease["unit"]
+                ?? "";
         }
     }
 
-    /*
-     * Property.
-     */
-    if ($customerPropertyName === '') {
+    if ($customerPropertyName === "") {
 
         if (
-            isset($currentLease['propertyId']) &&
-            is_array($currentLease['propertyId'])
+            isset($currentLease["propertyId"]) &&
+            is_array($currentLease["propertyId"])
         ) {
-
             $customerPropertyName =
-                $currentLease['propertyId']['name']
-                ?? '';
-
+                $currentLease["propertyId"]["name"]
+                ?? "";
         } else {
-
             $customerPropertyName =
-                $currentLease['property']
-                ?? $currentLease['propertyName']
-                ?? '';
+                $currentLease["property"]
+                ?? $currentLease["propertyName"]
+                ?? "";
         }
     }
 
-    /*
-     * Monthly rent.
-     */
-    $customerRent =
-        (float) (
-            $currentLease['rent']
-            ?? $currentLease['monthlyRent']
-            ?? 0
-        );
+    $customerRent = (float)(
+        $currentLease["rent"]
+        ?? $currentLease["monthlyRent"]
+        ?? 0
+    );
 }
 
 /*
 |--------------------------------------------------------------------------
-| Submit Customer Payment
+| Submit payment
 |--------------------------------------------------------------------------
 */
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $action =
-        $_POST['action']
-        ?? '';
+    $action = $_POST["action"] ?? "";
 
-    if ($action === 'submit_payment') {
+    if ($action === "submit_payment") {
 
-        /*
-         * Generate payment ID automatically.
-         */
         $paymentId =
-            'PAY-' .
-            date('YmdHis') .
-            '-' .
+            "PAY-" .
+            date("YmdHis") .
+            "-" .
             random_int(100, 999);
 
-        $amount =
-            (float) (
-                $_POST['amount']
-                ?? 0
-            );
+        $amount = (float)(
+            $_POST["amount"] ?? 0
+        );
 
         $paymentMethod =
-            trim(
-                $_POST['paymentMethod']
-                ?? ''
-            );
+            trim($_POST["paymentMethod"] ?? "");
 
         $paymentDate =
-            trim(
-                $_POST['paymentDate']
-                ?? ''
-            );
+            trim($_POST["paymentDate"] ?? "");
 
         $unitId =
-            trim(
-                $_POST['unitId']
-                ?? ''
-            );
+            trim($_POST["unitId"] ?? "");
 
         $unitNumber =
-            trim(
-                $_POST['unitNumber']
-                ?? ''
-            );
+            trim($_POST["unitNumber"] ?? "");
 
         $mpesaNumber =
-            trim(
-                $_POST['mpesaNumber']
-                ?? ''
-            );
+            trim($_POST["mpesaNumber"] ?? "");
 
-        /*
-         * Validate unit.
-         */
         if (
-            $unitId === '' &&
-            $unitNumber === ''
+            $unitId === "" &&
+            $unitNumber === ""
         ) {
 
             $errorMessage =
-                'Your assigned unit could not be identified. Please contact the administrator.';
+                "Your assigned unit could not be identified. Please contact the administrator.";
 
-        }
-
-        /*
-         * Validate amount.
-         */
-        elseif ($amount <= 0) {
+        } elseif ($amount <= 0) {
 
             $errorMessage =
-                'Payment amount must be greater than zero.';
+                "Payment amount must be greater than zero.";
 
-        }
-
-        /*
-         * Validate payment method.
-         */
-        elseif ($paymentMethod === '') {
+        } elseif ($paymentMethod === "") {
 
             $errorMessage =
-                'Please select a payment method.';
+                "Please select a payment method.";
 
-        }
-
-        /*
-         * M-Pesa requires a phone number.
-         */
-        elseif (
-            $paymentMethod === 'M-Pesa' &&
-            $mpesaNumber === ''
+        } elseif (
+            $paymentMethod === "M-Pesa" &&
+            $mpesaNumber === ""
         ) {
 
             $errorMessage =
-                'Please enter your M-Pesa number.';
+                "Please enter your M-Pesa number.";
 
-        }
-
-        /*
-         * Validate Kenyan M-Pesa number.
-         */
-        elseif (
-            $paymentMethod === 'M-Pesa' &&
+        } elseif (
+            $paymentMethod === "M-Pesa" &&
             !preg_match(
                 '/^(?:254|\+254|0)?7\d{8}$/',
                 $mpesaNumber
@@ -288,129 +252,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ) {
 
             $errorMessage =
-                'Please enter a valid Kenyan M-Pesa number.';
+                "Please enter a valid Kenyan M-Pesa number.";
 
-        }
+        } else {
 
-        else {
+            if ($paymentMethod === "M-Pesa") {
 
-            /*
-             * Normalize M-Pesa number.
-             *
-             * 0712345678
-             * becomes
-             * 254712345678
-             */
-            if ($paymentMethod === 'M-Pesa') {
+                $mpesaNumber = preg_replace(
+                    '/\s+/',
+                    "",
+                    $mpesaNumber
+                );
 
-                $mpesaNumber =
-                    preg_replace(
-                        '/\s+/',
-                        '',
-                        $mpesaNumber
-                    );
-
-                if (
-                    str_starts_with(
-                        $mpesaNumber,
-                        '+254'
-                    )
-                ) {
+                if (str_starts_with($mpesaNumber, "+254")) {
 
                     $mpesaNumber =
-                        '254' .
-                        substr(
-                            $mpesaNumber,
-                            4
-                        );
+                        "254" .
+                        substr($mpesaNumber, 4);
 
-                } elseif (
-                    str_starts_with(
-                        $mpesaNumber,
-                        '07'
-                    )
-                ) {
+                } elseif (str_starts_with($mpesaNumber, "07")) {
 
                     $mpesaNumber =
-                        '254' .
-                        substr(
-                            $mpesaNumber,
-                            1
-                        );
+                        "254" .
+                        substr($mpesaNumber, 1);
                 }
             }
 
-            /*
-             * Payment payload.
-             */
             $payload = [
 
-                /*
-                 * Automatically generated.
-                 */
-                'paymentId' =>
+                "paymentId" =>
                     $paymentId,
 
-                /*
-                 * Amount.
-                 */
-                'amount' =>
+                "amount" =>
                     $amount,
 
-                /*
-                 * Payment method.
-                 */
-                'paymentMethod' =>
+                "paymentMethod" =>
                     $paymentMethod,
 
-                /*
-                 * Payment date.
-                 */
-                'paymentDate' =>
-                    $paymentDate !== ''
+                "paymentDate" =>
+                    $paymentDate !== ""
                         ? $paymentDate
-                        : date('Y-m-d'),
+                        : date("Y-m-d"),
 
-                /*
-                 * Customer unit.
-                 */
-                'unitId' =>
+                "unitId" =>
                     $unitId,
 
-                'unitNumber' =>
+                "unitNumber" =>
                     $unitNumber,
 
-                /*
-                 * M-Pesa number.
-                 *
-                 * Empty for non-M-Pesa payments.
-                 */
-                'mpesaNumber' =>
-                    $paymentMethod === 'M-Pesa'
+                "mpesaNumber" =>
+                    $paymentMethod === "M-Pesa"
                         ? $mpesaNumber
-                        : '',
+                        : "",
             ];
 
-            /*
-             * Customer payment endpoint.
-             */
-            $result =
-                api_post(
-                    '/customer/payments',
-                    $payload
-                );
+            $result = api_post(
+                "/customer/payments",
+                $payload
+            );
 
-            if (!empty($result['success'])) {
+            if (!empty($result["success"])) {
 
                 $successMessage =
-                    $result['message']
-                    ?? 'Payment submitted successfully.';
+                    $result["message"]
+                    ?? "Payment submitted successfully.";
 
             } else {
 
                 $errorMessage =
-                    $result['message']
-                    ?? 'Unable to submit payment.';
+                    $result["message"]
+                    ?? "Unable to submit payment.";
             }
         }
     }
@@ -418,14 +329,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 /*
 |--------------------------------------------------------------------------
-| Reload customer data
+| Customer payments
 |--------------------------------------------------------------------------
 */
 
-require_once __DIR__ . "/../../includes/data.php";
-
-$customerPayments =
-    $payments ?? [];
+$customerPayments = $payments ?? [];
 
 /*
 |--------------------------------------------------------------------------
@@ -438,647 +346,514 @@ $totalPending = 0;
 
 foreach ($customerPayments as $payment) {
 
-    $paymentAmount =
-        (float) (
-            $payment['amount']
-            ?? 0
-        );
+    $paymentAmount = (float)(
+        $payment["amount"] ?? 0
+    );
 
-    $status =
+    $paymentStatus =
         strtolower(
-            $payment['status']
-            ?? ''
+            $payment["status"] ?? ""
         );
 
-    if ($status === 'paid') {
-
-        $totalPaid +=
-            $paymentAmount;
+    if ($paymentStatus === "paid") {
+        $totalPaid += $paymentAmount;
     }
 
-    if ($status === 'pending') {
-
-        $totalPending +=
-            $paymentAmount;
+    if ($paymentStatus === "pending") {
+        $totalPending += $paymentAmount;
     }
 }
+
+/*
+|--------------------------------------------------------------------------
+| Layout
+|--------------------------------------------------------------------------
+*/
 
 require_once __DIR__ . "/../../includes/header.php";
 require_once __DIR__ . "/../../includes/sidebar.php";
 
 ?>
 
-<main class="flex-1 lg:ml-64">
+<div class="lg:pl-64">
 
-<?php require_once __DIR__ . "/../../includes/navbar.php"; ?>
+    <main class="min-h-screen p-4 sm:p-6 lg:p-8">
 
-<div class="p-4 sm:p-6 lg:p-8">
+        <!-- Header -->
+        <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-    <!-- Header -->
+            <div>
 
-    <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <h1 class="text-2xl font-bold text-slate-900">
+                    My Payments
+                </h1>
 
-        <div>
+                <p class="mt-1 text-sm text-slate-500">
+                    View and submit your rent payments.
+                </p>
 
-            <h1 class="text-2xl font-bold text-slate-900">
-                My Payments
-            </h1>
+            </div>
 
-            <p class="mt-1 text-sm text-slate-500">
-                View and submit your rent payments.
-            </p>
-
-        </div>
-
-        <button
-            type="button"
-            onclick="document.getElementById('paymentModal').classList.remove('hidden')"
-            class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
-        >
-            + Submit Payment
-        </button>
-
-    </div>
-
-
-    <!-- Success Message -->
-
-    <?php if ($successMessage): ?>
-
-        <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-
-            <?= htmlspecialchars(
-                $successMessage,
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
+            <button
+                type="button"
+                onclick="document.getElementById('paymentModal').classList.remove('hidden')"
+                class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+                + Submit Payment
+            </button>
 
         </div>
 
-    <?php endif; ?>
+        <?php if ($successMessage): ?>
 
+            <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <?= customer_payment_escape($successMessage) ?>
+            </div>
 
-    <!-- Error Message -->
+        <?php endif; ?>
 
-    <?php if ($errorMessage): ?>
+        <?php if ($errorMessage): ?>
 
-        <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= customer_payment_escape($errorMessage) ?>
+            </div>
 
-            <?= htmlspecialchars(
-                $errorMessage,
-                ENT_QUOTES,
-                'UTF-8'
-            ) ?>
+        <?php endif; ?>
 
-        </div>
+        <!-- Summary -->
+        <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
-    <?php endif; ?>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
+                <p class="text-sm text-slate-500">
+                    Total Paid
+                </p>
 
-    <!-- Summary -->
+                <p class="mt-2 text-2xl font-bold text-slate-900">
+                    KSh <?= number_format($totalPaid, 2) ?>
+                </p>
 
-    <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            </div>
 
-        <div class="rounded-xl border bg-white p-5">
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
-            <p class="text-sm text-slate-500">
-                Total Paid
-            </p>
+                <p class="text-sm text-slate-500">
+                    Pending
+                </p>
 
-            <p class="mt-2 text-2xl font-bold text-slate-900">
-                KSh <?= number_format($totalPaid) ?>
-            </p>
+                <p class="mt-2 text-2xl font-bold text-amber-600">
+                    KSh <?= number_format($totalPending, 2) ?>
+                </p>
 
-        </div>
+            </div>
 
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
-        <div class="rounded-xl border bg-white p-5">
+                <p class="text-sm text-slate-500">
+                    Payments
+                </p>
 
-            <p class="text-sm text-slate-500">
-                Pending
-            </p>
+                <p class="mt-2 text-2xl font-bold text-indigo-600">
+                    <?= count($customerPayments) ?>
+                </p>
 
-            <p class="mt-2 text-2xl font-bold text-amber-600">
-                KSh <?= number_format($totalPending) ?>
-            </p>
-
-        </div>
-
-
-        <div class="rounded-xl border bg-white p-5">
-
-            <p class="text-sm text-slate-500">
-                Payments
-            </p>
-
-            <p class="mt-2 text-2xl font-bold text-indigo-600">
-                <?= count($customerPayments) ?>
-            </p>
+            </div>
 
         </div>
 
-    </div>
+        <!-- Payment History -->
+        <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
 
+            <div class="border-b border-slate-200 px-6 py-5">
 
-    <!-- Payment History -->
+                <h2 class="text-lg font-semibold text-slate-900">
+                    Payment History
+                </h2>
 
-    <div class="overflow-hidden rounded-xl border bg-white">
+                <p class="mt-1 text-sm text-slate-500">
+                    Your submitted rent payments.
+                </p>
 
-        <div class="border-b px-6 py-5">
+            </div>
 
-            <h2 class="text-lg font-semibold text-slate-900">
-                Payment History
-            </h2>
+            <div class="overflow-x-auto">
 
-            <p class="mt-1 text-sm text-slate-500">
-                Your submitted rent payments.
-            </p>
+                <table class="min-w-full divide-y divide-slate-200">
 
-        </div>
-
-
-        <div class="overflow-x-auto">
-
-            <table class="min-w-full divide-y divide-slate-200">
-
-                <thead class="bg-slate-50">
-
-                    <tr>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Payment ID
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Unit
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Amount
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Method
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Date
-                        </th>
-
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Status
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody class="divide-y divide-slate-100 bg-white">
-
-                    <?php if (empty($customerPayments)): ?>
+                    <thead class="bg-slate-50">
 
                         <tr>
 
-                            <td
-                                colspan="6"
-                                class="px-6 py-12 text-center text-sm text-slate-500"
-                            >
-                                No payments found.
-                            </td>
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Payment ID
+                            </th>
+
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Unit
+                            </th>
+
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Amount
+                            </th>
+
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Method
+                            </th>
+
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Date
+                            </th>
+
+                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Status
+                            </th>
 
                         </tr>
 
-                    <?php else: ?>
+                    </thead>
 
-                        <?php foreach ($customerPayments as $payment): ?>
+                    <tbody class="divide-y divide-slate-100 bg-white">
 
-                            <?php
+                        <?php if (empty($customerPayments)): ?>
 
-                            $status =
-                                $payment['status']
-                                ?? 'Pending';
+                            <tr>
 
-                            $statusClass =
-                                match ($status) {
-
-                                    'Paid' =>
-                                        'bg-emerald-100 text-emerald-700',
-
-                                    'Failed' =>
-                                        'bg-red-100 text-red-700',
-
-                                    'Cancelled' =>
-                                        'bg-slate-100 text-slate-700',
-
-                                    default =>
-                                        'bg-amber-100 text-amber-700',
-                                };
-
-
-                            $historyUnit = '';
-
-                            if (
-                                isset($payment['unitId']) &&
-                                is_array($payment['unitId'])
-                            ) {
-
-                                $historyUnit =
-                                    $payment['unitId']['unitNumber']
-                                    ?? '';
-                            }
-
-                            if ($historyUnit === '') {
-
-                                $historyUnit =
-                                    $payment['unitNumber']
-                                    ?? $payment['unit']
-                                    ?? '-';
-                            }
-
-                            ?>
-
-                            <tr class="hover:bg-slate-50">
-
-                                <td class="whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-900">
-
-                                    <?= htmlspecialchars(
-                                        $payment['paymentId']
-                                        ?? $payment['id']
-                                        ?? '-',
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
-                                </td>
-
-
-                                <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
-
-                                    <?= htmlspecialchars(
-                                        $historyUnit,
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
-                                </td>
-
-
-                                <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
-
-                                    KSh <?= number_format(
-                                        (float) (
-                                            $payment['amount']
-                                            ?? 0
-                                        )
-                                    ) ?>
-
-                                </td>
-
-
-                                <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
-
-                                    <?= htmlspecialchars(
-                                        $payment['paymentMethod']
-                                        ?? $payment['method']
-                                        ?? '-',
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
-                                </td>
-
-
-                                <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
-
-                                    <?= htmlspecialchars(
-                                        $payment['paymentDate']
-                                        ?? $payment['date']
-                                        ?? '-',
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
-                                </td>
-
-
-                                <td class="whitespace-nowrap px-6 py-4">
-
-                                    <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold <?= $statusClass ?>">
-
-                                        <?= htmlspecialchars(
-                                            $status,
-                                            ENT_QUOTES,
-                                            'UTF-8'
-                                        ) ?>
-
-                                    </span>
-
+                                <td
+                                    colspan="6"
+                                    class="px-6 py-12 text-center text-sm text-slate-500"
+                                >
+                                    No payments found.
                                 </td>
 
                             </tr>
 
-                        <?php endforeach; ?>
+                        <?php else: ?>
 
-                    <?php endif; ?>
+                            <?php foreach ($customerPayments as $payment): ?>
 
-                </tbody>
+                                <?php
 
-            </table>
+                                $paymentStatus =
+                                    $payment["status"]
+                                    ?? "Pending";
 
-        </div>
+                                $statusLower =
+                                    strtolower($paymentStatus);
 
-    </div>
+                                $statusClass = match ($statusLower) {
+
+                                    "paid" =>
+                                        "bg-emerald-100 text-emerald-700",
+
+                                    "failed" =>
+                                        "bg-red-100 text-red-700",
+
+                                    "cancelled" =>
+                                        "bg-slate-100 text-slate-700",
+
+                                    default =>
+                                        "bg-amber-100 text-amber-700",
+                                };
+
+                                $historyUnit = "";
+
+                                if (
+                                    isset($payment["unitId"]) &&
+                                    is_array($payment["unitId"])
+                                ) {
+                                    $historyUnit =
+                                        $payment["unitId"]["unitNumber"]
+                                        ?? "";
+                                }
+
+                                if ($historyUnit === "") {
+                                    $historyUnit =
+                                        $payment["unitNumber"]
+                                        ?? $payment["unit"]
+                                        ?? "-";
+                                }
+
+                                $paymentId =
+                                    $payment["paymentId"]
+                                    ?? $payment["id"]
+                                    ?? "-";
+
+                                $paymentMethod =
+                                    $payment["paymentMethod"]
+                                    ?? $payment["method"]
+                                    ?? "-";
+
+                                ?>
+
+                                <tr class="hover:bg-slate-50">
+
+                                    <td class="whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-900">
+                                        <?= customer_payment_escape($paymentId) ?>
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
+                                        <?= customer_payment_escape($historyUnit) ?>
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-6 py-4 text-sm font-semibold text-slate-700">
+                                        KSh
+                                        <?= number_format(
+                                            (float)($payment["amount"] ?? 0),
+                                            2
+                                        ) ?>
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
+                                        <?= customer_payment_escape($paymentMethod) ?>
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
+                                        <?= customer_payment_escape(
+                                            customer_payment_date(
+                                                $payment["paymentDate"]
+                                                ?? $payment["date"]
+                                                ?? ""
+                                            )
+                                        ) ?>
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-6 py-4">
+
+                                        <span
+                                            class="inline-flex rounded-full px-3 py-1 text-xs font-semibold <?= $statusClass ?>"
+                                        >
+                                            <?= customer_payment_escape($paymentStatus) ?>
+                                        </span>
+
+                                    </td>
+
+                                </tr>
+
+                            <?php endforeach; ?>
+
+                        <?php endif; ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+    </main>
 
 </div>
 
-
-</main>
-
-<!-- ============================================================
-     Payment Modal
-============================================================ -->
+<!-- Payment Modal -->
 
 <div
     id="paymentModal"
     class="fixed inset-0 z-50 hidden overflow-y-auto bg-slate-950/50 px-4 py-10"
 >
 
+    <div class="mx-auto max-w-lg rounded-2xl bg-white shadow-xl">
 
-<div class="mx-auto max-w-lg rounded-2xl bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-6 py-5">
 
+            <div>
 
-    <!-- Modal Header -->
+                <h2 class="text-lg font-semibold text-slate-900">
+                    Submit Payment
+                </h2>
 
-    <div class="flex items-center justify-between border-b px-6 py-5">
+                <p class="mt-1 text-sm text-slate-500">
+                    Submit your rent payment for verification.
+                </p>
 
-        <div>
+            </div>
 
-            <h2 class="text-lg font-semibold text-slate-900">
-                Submit Payment
-            </h2>
-
-            <p class="mt-1 text-sm text-slate-500">
-                Submit your rent payment for verification.
-            </p>
+            <button
+                type="button"
+                onclick="document.getElementById('paymentModal').classList.add('hidden')"
+                class="text-2xl text-slate-400 hover:text-slate-600"
+            >
+                &times;
+            </button>
 
         </div>
 
-
-        <button
-            type="button"
-            onclick="document.getElementById('paymentModal').classList.add('hidden')"
-            class="text-2xl text-slate-400 hover:text-slate-600"
-        >
-            &times;
-        </button>
-
-    </div>
-
-
-    <!-- Payment Form -->
-
-    <form
-        method="POST"
-        action="payments.php"
-        class="space-y-5 p-6"
-        id="paymentForm"
-    >
-
-        <input
-            type="hidden"
-            name="action"
-            value="submit_payment"
+        <form
+            method="POST"
+            action="payments.php"
+            class="space-y-5 p-6"
         >
 
+            <input
+                type="hidden"
+                name="action"
+                value="submit_payment"
+            >
 
-        <!-- =================================================
-             YOUR UNIT
-        ================================================== -->
+            <!-- Unit -->
 
-        <div>
+            <div>
 
-            <label class="mb-2 block text-sm font-medium text-slate-700">
-                Your Unit
-            </label>
+                <label class="mb-2 block text-sm font-medium text-slate-700">
+                    Your Unit
+                </label>
 
+                <?php if (
+                    $customerUnitId !== "" ||
+                    $customerUnitNumber !== ""
+                ): ?>
 
-            <?php if (
-                $customerUnitId !== '' ||
-                $customerUnitNumber !== ''
-            ): ?>
+                    <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
 
-                <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3">
+                        <div class="flex items-center justify-between">
 
-                    <div class="flex items-center justify-between">
+                            <div>
 
-                        <div>
-
-                            <p class="text-xs font-medium uppercase tracking-wide text-indigo-500">
-                                Assigned Unit
-                            </p>
-
-                            <p class="mt-1 font-semibold text-slate-900">
-
-                                <?= htmlspecialchars(
-                                    $customerUnitNumber !== ''
-                                        ? $customerUnitNumber
-                                        : $customerUnitId,
-                                    ENT_QUOTES,
-                                    'UTF-8'
-                                ) ?>
-
-                            </p>
-
-
-                            <?php if (
-                                $customerPropertyName !== ''
-                            ): ?>
-
-                                <p class="mt-1 text-xs text-slate-500">
-
-                                    <?= htmlspecialchars(
-                                        $customerPropertyName,
-                                        ENT_QUOTES,
-                                        'UTF-8'
-                                    ) ?>
-
+                                <p class="text-xs font-medium uppercase tracking-wide text-indigo-500">
+                                    Assigned Unit
                                 </p>
 
-                            <?php endif; ?>
+                                <p class="mt-1 font-semibold text-slate-900">
+                                    <?= customer_payment_escape(
+                                        $customerUnitNumber !== ""
+                                            ? $customerUnitNumber
+                                            : $customerUnitId
+                                    ) ?>
+                                </p>
 
-                        </div>
+                                <?php if ($customerPropertyName !== ""): ?>
 
+                                    <p class="mt-1 text-xs text-slate-500">
+                                        <?= customer_payment_escape($customerPropertyName) ?>
+                                    </p>
 
-                        <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-600">
-                            My Unit
+                                <?php endif; ?>
+
+                            </div>
+
+                            <div class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-600">
+                                My Unit
+                            </div>
+
                         </div>
 
                     </div>
 
-                </div>
+                <?php else: ?>
 
+                    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        Your assigned unit could not be found.
+                        Please contact the administrator before submitting a payment.
+                    </div>
 
-                <input
-                    type="hidden"
-                    name="unitId"
-                    value="<?= htmlspecialchars(
-                        $customerUnitId,
-                        ENT_QUOTES,
-                        'UTF-8'
-                    ) ?>"
-                >
-
-
-                <input
-                    type="hidden"
-                    name="unitNumber"
-                    value="<?= htmlspecialchars(
-                        $customerUnitNumber,
-                        ENT_QUOTES,
-                        'UTF-8'
-                    ) ?>"
-                >
-
-            <?php else: ?>
-
-                <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-
-                    Your assigned unit could not be found.
-                    Please contact the administrator before submitting a payment.
-
-                </div>
-
+                <?php endif; ?>
 
                 <input
                     type="hidden"
                     name="unitId"
-                    value=""
+                    value="<?= customer_payment_escape($customerUnitId) ?>"
                 >
 
                 <input
                     type="hidden"
                     name="unitNumber"
-                    value=""
-                >
-
-            <?php endif; ?>
-
-        </div>
-
-
-        <!-- =================================================
-             AMOUNT
-        ================================================== -->
-
-        <div>
-
-            <label
-                for="amount"
-                class="mb-2 block text-sm font-medium text-slate-700"
-            >
-                Amount
-            </label>
-
-
-            <div class="relative">
-
-                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">
-                    KSh
-                </span>
-
-
-                <input
-                    type="number"
-                    id="amount"
-                    name="amount"
-                    min="1"
-                    step="0.01"
-                    placeholder="25000"
-                    value="<?= $customerRent > 0
-                        ? htmlspecialchars(
-                            (string) $customerRent,
-                            ENT_QUOTES,
-                            'UTF-8'
-                        )
-                        : '' ?>"
-                    required
-                    class="w-full rounded-lg border border-slate-300 py-3 pl-14 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    value="<?= customer_payment_escape($customerUnitNumber) ?>"
                 >
 
             </div>
 
+            <!-- Amount -->
 
-            <?php if ($customerRent > 0): ?>
+            <div>
 
-                <p class="mt-1 text-xs text-slate-500">
+                <label
+                    for="amount"
+                    class="mb-2 block text-sm font-medium text-slate-700"
+                >
+                    Amount
+                </label>
 
-                    Current monthly rent:
-                    KSh <?= number_format($customerRent) ?>
+                <div class="relative">
 
-                </p>
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">
+                        KSh
+                    </span>
 
-            <?php endif; ?>
+                    <input
+                        type="number"
+                        id="amount"
+                        name="amount"
+                        min="1"
+                        step="0.01"
+                        placeholder="25000"
+                        value="<?= $customerRent > 0
+                            ? customer_payment_escape($customerRent)
+                            : "" ?>"
+                        required
+                        class="w-full rounded-lg border border-slate-300 py-3 pl-14 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                    >
 
-        </div>
+                </div>
 
+                <?php if ($customerRent > 0): ?>
 
-        <!-- =================================================
-             PAYMENT METHOD
-        ================================================== -->
+                    <p class="mt-1 text-xs text-slate-500">
+                        Current monthly rent:
+                        KSh <?= number_format($customerRent, 2) ?>
+                    </p>
 
-        <div>
+                <?php endif; ?>
 
-            <label
-                for="paymentMethod"
-                class="mb-2 block text-sm font-medium text-slate-700"
+            </div>
+
+            <!-- Payment method -->
+
+            <div>
+
+                <label
+                    for="paymentMethod"
+                    class="mb-2 block text-sm font-medium text-slate-700"
+                >
+                    Payment Method
+                </label>
+
+                <select
+                    id="paymentMethod"
+                    name="paymentMethod"
+                    required
+                    class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
+
+                    <option value="">
+                        Select method
+                    </option>
+
+                    <option value="M-Pesa">
+                        M-Pesa
+                    </option>
+
+                    <option value="Bank Transfer">
+                        Bank Transfer
+                    </option>
+
+                    <option value="Cash">
+                        Cash
+                    </option>
+
+                    <option value="Other">
+                        Other
+                    </option>
+
+                </select>
+
+            </div>
+
+            <!-- M-Pesa -->
+
+            <div
+                id="mpesaFields"
+                class="hidden rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
             >
-                Payment Method
-            </label>
-
-
-            <select
-                id="paymentMethod"
-                name="paymentMethod"
-                required
-                class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-            >
-
-                <option value="">
-                    Select method
-                </option>
-
-                <option value="M-Pesa">
-                    M-Pesa
-                </option>
-
-                <option value="Bank Transfer">
-                    Bank Transfer
-                </option>
-
-                <option value="Cash">
-                    Cash
-                </option>
-
-                <option value="Other">
-                    Other
-                </option>
-
-            </select>
-
-        </div>
-
-
-        <!-- =================================================
-             M-PESA NUMBER
-        ================================================== -->
-
-        <div
-            id="mpesaFields"
-            class="hidden rounded-xl border border-emerald-200 bg-emerald-50/50 p-4"
-        >
-
-            <div class="mb-4">
 
                 <p class="text-sm font-semibold text-slate-900">
                     M-Pesa Details
@@ -1088,186 +863,137 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     Enter the phone number used to make the payment.
                 </p>
 
+                <label
+                    for="mpesaNumber"
+                    class="mb-2 mt-4 block text-sm font-medium text-slate-700"
+                >
+                    M-Pesa Number
+                </label>
+
+                <input
+                    type="tel"
+                    id="mpesaNumber"
+                    name="mpesaNumber"
+                    inputmode="numeric"
+                    autocomplete="tel"
+                    placeholder="0712345678"
+                    maxlength="13"
+                    class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
+
+                <p class="mt-1 text-xs text-slate-500">
+                    Example: 0712345678
+                </p>
+
             </div>
 
+            <!-- Date -->
 
-            <label
-                for="mpesaNumber"
-                class="mb-2 block text-sm font-medium text-slate-700"
-            >
-                M-Pesa Number
-            </label>
+            <div>
 
+                <label
+                    for="paymentDate"
+                    class="mb-2 block text-sm font-medium text-slate-700"
+                >
+                    Payment Date
+                </label>
 
-            <input
-                type="tel"
-                id="mpesaNumber"
-                name="mpesaNumber"
-                inputmode="numeric"
-                autocomplete="tel"
-                placeholder="0712345678"
-                maxlength="13"
-                class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-            >
+                <input
+                    type="date"
+                    id="paymentDate"
+                    name="paymentDate"
+                    value="<?= date("Y-m-d") ?>"
+                    required
+                    class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                >
 
+            </div>
 
-            <p class="mt-1 text-xs text-slate-500">
-                Example: 0712345678
-            </p>
+            <!-- Buttons -->
 
-        </div>
+            <div class="flex justify-end gap-3 border-t pt-5">
 
+                <button
+                    type="button"
+                    onclick="document.getElementById('paymentModal').classList.add('hidden')"
+                    class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                    Cancel
+                </button>
 
-        <!-- =================================================
-             PAYMENT DATE
-        ================================================== -->
+                <button
+                    type="submit"
+                    class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                    Submit Payment
+                </button>
 
-        <div>
+            </div>
 
-            <label
-                for="paymentDate"
-                class="mb-2 block text-sm font-medium text-slate-700"
-            >
-                Payment Date
-            </label>
+        </form>
 
-
-            <input
-                type="date"
-                id="paymentDate"
-                name="paymentDate"
-                value="<?= date('Y-m-d') ?>"
-                required
-                class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-            >
-
-        </div>
-
-
-        <!-- =================================================
-             BUTTONS
-        ================================================== -->
-
-        <div class="flex justify-end gap-3 border-t pt-5">
-
-            <button
-                type="button"
-                onclick="document.getElementById('paymentModal').classList.add('hidden')"
-                class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-                Cancel
-            </button>
-
-
-            <button
-                type="submit"
-                class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-                Submit Payment
-            </button>
-
-        </div>
-
-    </form>
+    </div>
 
 </div>
-
-
-</div>
-
-<!-- ============================================================
-     Payment Form JavaScript
-============================================================ -->
 
 <script>
-
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener("DOMContentLoaded", function () {
 
     const paymentMethod =
-        document.getElementById('paymentMethod');
+        document.getElementById("paymentMethod");
 
     const mpesaFields =
-        document.getElementById('mpesaFields');
+        document.getElementById("mpesaFields");
 
     const mpesaNumber =
-        document.getElementById('mpesaNumber');
-
-
-    /*
-     * Show or hide M-Pesa number.
-     */
+        document.getElementById("mpesaNumber");
 
     function updatePaymentMethod() {
 
-        if (paymentMethod.value === 'M-Pesa') {
+        if (paymentMethod.value === "M-Pesa") {
 
-            mpesaFields.classList.remove('hidden');
-
+            mpesaFields.classList.remove("hidden");
             mpesaNumber.required = true;
 
         } else {
 
-            mpesaFields.classList.add('hidden');
-
+            mpesaFields.classList.add("hidden");
             mpesaNumber.required = false;
-
-            mpesaNumber.value = '';
+            mpesaNumber.value = "";
         }
     }
 
-
     paymentMethod.addEventListener(
-        'change',
+        "change",
         updatePaymentMethod
     );
 
-
-    /*
-     * Initial state.
-     */
-
     updatePaymentMethod();
 
-
-    /*
-     * Allow only numbers and + in M-Pesa number.
-     */
-
     mpesaNumber.addEventListener(
-        'input',
+        "input",
         function () {
-
-            this.value =
-                this.value.replace(
-                    /[^0-9+]/g,
-                    ''
-                );
+            this.value = this.value.replace(
+                /[^0-9+]/g,
+                ""
+            );
         }
     );
 
-
-    /*
-     * Close modal when clicking outside.
-     */
-
     const modal =
-        document.getElementById('paymentModal');
+        document.getElementById("paymentModal");
 
     modal.addEventListener(
-        'click',
+        "click",
         function (event) {
 
             if (event.target === modal) {
-
-                modal.classList.add('hidden');
-
+                modal.classList.add("hidden");
             }
-
         }
     );
 
 });
-
 </script>
 
 <?php require_once __DIR__ . "/../../includes/footer.php"; ?>
