@@ -128,16 +128,6 @@ function tenant_status_class(string $status): string
 
         <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
 
-            <button
-                id="mobileMenuButton"
-                type="button"
-                class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
-                aria-label="Open navigation menu"
-                aria-expanded="false"
-            >
-                ☰
-            </button>
-
             <div>
                 <h1 class="text-lg font-semibold text-slate-900">
                     Tenants

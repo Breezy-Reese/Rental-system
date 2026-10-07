@@ -377,28 +377,15 @@ require_once "../../includes/sidebar.php";
 
         <div class="flex min-h-16 items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
 
-            <div class="flex items-center gap-3">
+            <div>
 
-                <button
-                    id="mobileMenuButton"
-                    type="button"
-                    aria-label="Open navigation menu"
-                    class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
-                >
-                    ☰
-                </button>
+                <h1 class="text-lg font-semibold text-slate-900">
+                    Leases
+                </h1>
 
-                <div>
-
-                    <h1 class="text-lg font-semibold text-slate-900">
-                        Leases
-                    </h1>
-
-                    <p class="hidden text-xs text-slate-500 sm:block">
-                        Manage tenant leases
-                    </p>
-
-                </div>
+                <p class="hidden text-xs text-slate-500 sm:block">
+                    Manage tenant leases
+                </p>
 
             </div>
 
