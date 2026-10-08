@@ -19,15 +19,21 @@ $pageTitle = 'Units';
 |--------------------------------------------------------------------------
 */
 
-if (!function_exists('pp_units_e')) {
-    function pp_units_e($value): string
-    {
-        return htmlspecialchars(
-            (string)($value ?? ''),
-            ENT_QUOTES,
-            'UTF-8'
-        );
-    }
+function pp_units_e($value): string
+{
+    return htmlspecialchars(
+        (string)($value ?? ''),
+        ENT_QUOTES,
+        'UTF-8'
+    );
+}
+
+function pp_units_money($value): string
+{
+    return 'KES ' . number_format(
+        (float)($value ?? 0),
+        2
+    );
 }
 
 /*
@@ -36,34 +42,33 @@ if (!function_exists('pp_units_e')) {
 |--------------------------------------------------------------------------
 */
 
-function pp_units_get(): array
-{
-    try {
-        $response = api_get('/units');
+$units = [];
+$unitsResponse = [];
 
-        if (!is_array($response)) {
-            return [
-                'success' => false,
-                'data' => [],
-                'message' => 'Invalid API response.'
-            ];
-        }
+try {
 
-        return $response;
+    $unitsResponse = api_get('/units');
 
-    } catch (Throwable $e) {
-
-        error_log(
-            'PropertyPro Units API error: ' .
-            $e->getMessage()
+    if (
+        is_array($unitsResponse) &&
+        is_array($unitsResponse['data'] ?? null)
+    ) {
+        $units = array_values(
+            array_filter(
+                $unitsResponse['data'],
+                static function ($unit): bool {
+                    return is_array($unit);
+                }
+            )
         );
-
-        return [
-            'success' => false,
-            'data' => [],
-            'message' => 'Unable to load units.'
-        ];
     }
+
+} catch (Throwable $e) {
+
+    error_log(
+        'PropertyPro Units API Error: ' .
+        $e->getMessage()
+    );
 }
 
 /*
@@ -72,134 +77,109 @@ function pp_units_get(): array
 |--------------------------------------------------------------------------
 */
 
-function pp_units_get_properties(): array
-{
-    try {
-        $response = api_get('/properties');
+$properties = [];
 
-        if (!is_array($response)) {
-            return [];
-        }
+try {
 
-        $data = $response['data'] ?? [];
+    $propertiesResponse = api_get('/properties');
 
-        if (!is_array($data)) {
-            return [];
-        }
+    if (
+        is_array($propertiesResponse) &&
+        is_array($propertiesResponse['data'] ?? null)
+    ) {
 
-        return array_values(
+        $properties = array_values(
             array_filter(
-                $data,
+                $propertiesResponse['data'],
                 static function ($property): bool {
                     return is_array($property);
                 }
             )
         );
-
-    } catch (Throwable $e) {
-
-        error_log(
-            'PropertyPro Properties API error: ' .
-            $e->getMessage()
-        );
-
-        return [];
     }
+
+} catch (Throwable $e) {
+
+    error_log(
+        'PropertyPro Properties API Error: ' .
+        $e->getMessage()
+    );
 }
 
 /*
 |--------------------------------------------------------------------------
-| Unit Helpers
+| Helper Functions For Unit Data
 |--------------------------------------------------------------------------
 */
 
-function pp_units_id($value): string
+function pp_unit_id(array $unit): string
 {
-    if (is_array($value)) {
-        return (string)(
-            $value['_id']
-            ?? $value['id']
-            ?? ''
-        );
-    }
-
-    if (is_object($value)) {
-        return (string)(
-            $value->_id
-            ?? $value->id
-            ?? ''
-        );
-    }
-
-    return (string)($value ?? '');
+    return (string)(
+        $unit['_id']
+        ?? $unit['id']
+        ?? $unit['unitId']
+        ?? ''
+    );
 }
 
-function pp_units_number(array $unit): string
+function pp_unit_number(array $unit): string
 {
     return trim(
         (string)(
             $unit['unitNumber']
             ?? $unit['number']
-            ?? $unit['name']
-            ?? $unit['unitName']
             ?? 'N/A'
         )
     );
 }
 
-function pp_units_property_name(array $unit): string
+function pp_unit_property(array $unit): string
 {
     $property = $unit['propertyId'] ?? null;
 
     if (is_array($property)) {
 
-        $name = trim(
+        return trim(
             (string)(
                 $property['name']
                 ?? $property['propertyName']
                 ?? $property['title']
-                ?? ''
+                ?? 'Unknown Property'
             )
         );
-
-        if ($name !== '') {
-            return $name;
-        }
     }
 
-    if (!empty($unit['propertyName'])) {
-        return (string)$unit['propertyName'];
-    }
-
-    return 'Unknown Property';
+    return trim(
+        (string)(
+            $unit['propertyName']
+            ?? 'Unknown Property'
+        )
+    );
 }
 
-function pp_units_property_location(array $unit): string
+function pp_unit_location(array $unit): string
 {
     $property = $unit['propertyId'] ?? null;
 
     if (is_array($property)) {
 
-        $location = trim(
+        return trim(
             (string)(
                 $property['location']
                 ?? ''
             )
         );
-
-        if ($location !== '') {
-            return $location;
-        }
     }
 
-    if (!empty($unit['location'])) {
-        return (string)$unit['location'];
-    }
-
-    return '';
+    return trim(
+        (string)(
+            $unit['location']
+            ?? ''
+        )
+    );
 }
 
-function pp_units_tenant_name(array $unit): string
+function pp_unit_tenant(array $unit): string
 {
     $tenant = $unit['tenantId'] ?? null;
 
@@ -228,43 +208,22 @@ function pp_units_tenant_name(array $unit): string
         }
     }
 
-    if (!empty($unit['tenantName'])) {
-        return (string)$unit['tenantName'];
-    }
-
-    return 'Vacant';
+    return trim(
+        (string)(
+            $unit['tenantName']
+            ?? 'Vacant'
+        )
+    );
 }
 
-function pp_units_tenant_email(array $unit): string
-{
-    $tenant = $unit['tenantId'] ?? null;
-
-    if (is_array($tenant) && !empty($tenant['email'])) {
-        return (string)$tenant['email'];
-    }
-
-    return '';
-}
-
-function pp_units_tenant_phone(array $unit): string
-{
-    $tenant = $unit['tenantId'] ?? null;
-
-    if (is_array($tenant) && !empty($tenant['phone'])) {
-        return (string)$tenant['phone'];
-    }
-
-    return '';
-}
-
-function pp_units_status(array $unit): string
+function pp_unit_status(array $unit): string
 {
     $status = strtolower(
         trim(
             (string)(
                 $unit['status']
                 ?? $unit['unitStatus']
-                ?? ''
+                ?? 'Vacant'
             )
         )
     );
@@ -272,7 +231,11 @@ function pp_units_status(array $unit): string
     if (
         in_array(
             $status,
-            ['occupied', 'rented', 'leased'],
+            [
+                'occupied',
+                'rented',
+                'leased'
+            ],
             true
         )
     ) {
@@ -282,44 +245,14 @@ function pp_units_status(array $unit): string
     return 'Vacant';
 }
 
-function pp_units_rent(array $unit): float
+function pp_unit_rent(array $unit): float
 {
     return (float)(
         $unit['rent']
         ?? $unit['monthlyRent']
-        ?? $unit['price']
         ?? 0
     );
 }
-
-/*
-|--------------------------------------------------------------------------
-| Load Data
-|--------------------------------------------------------------------------
-*/
-
-$unitsResponse = pp_units_get();
-
-$units = [];
-
-if (
-    is_array($unitsResponse['data'] ?? null)
-) {
-    $units = array_values(
-        array_filter(
-            $unitsResponse['data'],
-            static function ($unit): bool {
-                return is_array($unit);
-            }
-        )
-    );
-}
-
-$loadError = (
-    ($unitsResponse['success'] ?? false) !== true
-);
-
-$properties = pp_units_get_properties();
 
 /*
 |--------------------------------------------------------------------------
@@ -328,7 +261,7 @@ $properties = pp_units_get_properties();
 */
 
 $flashMessage = $_SESSION['units_flash_message'] ?? '';
-$flashType    = $_SESSION['units_flash_type'] ?? '';
+$flashType = $_SESSION['units_flash_type'] ?? '';
 
 unset(
     $_SESSION['units_flash_message'],
@@ -337,7 +270,7 @@ unset(
 
 /*
 |--------------------------------------------------------------------------
-| Create Unit
+| CREATE UNIT
 |--------------------------------------------------------------------------
 */
 
@@ -347,20 +280,38 @@ if (
 ) {
 
     $propertyId = trim(
-        (string)($_POST['propertyId'] ?? '')
+        (string)(
+            $_POST['propertyId']
+            ?? ''
+        )
     );
 
     $unitNumber = trim(
-        (string)($_POST['unitNumber'] ?? '')
+        (string)(
+            $_POST['unitNumber']
+            ?? ''
+        )
     );
 
     $rent = trim(
-        (string)($_POST['rent'] ?? '')
+        (string)(
+            $_POST['rent']
+            ?? ''
+        )
     );
 
     $status = trim(
-        (string)($_POST['status'] ?? 'Vacant')
+        (string)(
+            $_POST['status']
+            ?? 'Vacant'
+        )
     );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Validate Form
+    |--------------------------------------------------------------------------
+    */
 
     if (
         $propertyId === '' ||
@@ -369,17 +320,61 @@ if (
     ) {
 
         $_SESSION['units_flash_message'] =
-            'Please complete all required unit fields.';
+            'Property, Unit number and rent are required.';
 
-        $_SESSION['units_flash_type'] = 'error';
+        $_SESSION['units_flash_type'] =
+            'error';
 
         header('Location: units.php');
         exit;
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | AUTOMATIC UNIT ID
+    |--------------------------------------------------------------------------
+    |
+    | The administrator does NOT type this.
+    | PropertyPro generates it automatically.
+    |
+    */
+
+    try {
+
+        $unitId =
+            'UNIT-' .
+            date('YmdHis') .
+            '-' .
+            strtoupper(
+                bin2hex(
+                    random_bytes(3)
+                )
+            );
+
+    } catch (Throwable $e) {
+
+        $unitId =
+            'UNIT-' .
+            date('YmdHis') .
+            '-' .
+            strtoupper(
+                substr(
+                    uniqid(),
+                    -6
+                )
+            );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | API Payload
+    |--------------------------------------------------------------------------
+    */
+
     $payload = [
-        'unitNumber' => $unitNumber,
+        'unitId'     => $unitId,
         'propertyId' => $propertyId,
+        'unitNumber' => $unitNumber,
         'rent'       => (float)$rent,
         'status'     => $status
     ];
@@ -419,12 +414,12 @@ if (
     } catch (Throwable $e) {
 
         error_log(
-            'PropertyPro create unit error: ' .
+            'PropertyPro Create Unit Error: ' .
             $e->getMessage()
         );
 
         $_SESSION['units_flash_message'] =
-            'Unable to create the unit. Please try again.';
+            'Unable to create unit. Please try again.';
 
         $_SESSION['units_flash_type'] =
             'error';
@@ -436,7 +431,7 @@ if (
 
 /*
 |--------------------------------------------------------------------------
-| Assign Customer
+| ASSIGN CUSTOMER
 |--------------------------------------------------------------------------
 */
 
@@ -446,11 +441,17 @@ if (
 ) {
 
     $unitId = trim(
-        (string)($_POST['unitId'] ?? '')
+        (string)(
+            $_POST['unitId']
+            ?? ''
+        )
     );
 
     $customerId = trim(
-        (string)($_POST['customerId'] ?? '')
+        (string)(
+            $_POST['customerId']
+            ?? ''
+        )
     );
 
     if (
@@ -459,7 +460,7 @@ if (
     ) {
 
         $_SESSION['units_flash_message'] =
-            'Please select both a unit and a customer.';
+            'Unit and Customer ID are required.';
 
         $_SESSION['units_flash_type'] =
             'error';
@@ -473,7 +474,7 @@ if (
         $response = api_post(
             '/leases/assign-customer',
             [
-                'unitId'     => $unitId,
+                'unitId' => $unitId,
                 'customerId' => $customerId
             ]
         );
@@ -484,7 +485,7 @@ if (
         ) {
 
             $_SESSION['units_flash_message'] =
-                'Customer assigned to the unit successfully.';
+                'Customer assigned successfully.';
 
             $_SESSION['units_flash_type'] =
                 'success';
@@ -506,12 +507,12 @@ if (
     } catch (Throwable $e) {
 
         error_log(
-            'PropertyPro assign customer error: ' .
+            'PropertyPro Assign Customer Error: ' .
             $e->getMessage()
         );
 
         $_SESSION['units_flash_message'] =
-            'Unable to assign customer. Please try again.';
+            'Unable to assign customer.';
 
         $_SESSION['units_flash_type'] =
             'error';
@@ -530,20 +531,23 @@ if (
 $totalUnits = count($units);
 
 $occupiedUnits = 0;
-$vacantUnits   = 0;
-$totalRent     = 0;
+$vacantUnits = 0;
+$totalRent = 0;
 
 foreach ($units as $unit) {
 
-    $status = pp_units_status($unit);
+    if (
+        pp_unit_status($unit) === 'Occupied'
+    ) {
 
-    if ($status === 'Occupied') {
         $occupiedUnits++;
+
     } else {
+
         $vacantUnits++;
     }
 
-    $totalRent += pp_units_rent($unit);
+    $totalRent += pp_unit_rent($unit);
 }
 
 $occupancyRate =
@@ -559,20 +563,21 @@ $occupancyRate =
 |--------------------------------------------------------------------------
 */
 
-$vacantUnitOptions = [];
+$vacantUnitsList = [];
 
 foreach ($units as $unit) {
 
     if (
-        pp_units_status($unit) === 'Vacant'
+        pp_unit_status($unit) === 'Vacant'
     ) {
-        $vacantUnitOptions[] = $unit;
+
+        $vacantUnitsList[] = $unit;
     }
 }
 
 /*
 |--------------------------------------------------------------------------
-| Layout
+| Page Layout
 |--------------------------------------------------------------------------
 */
 
@@ -585,7 +590,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
     <div class="px-4 py-6 sm:px-6 lg:px-8">
 
-        <!-- Page Header -->
+        <!-- =====================================================
+             HEADER
+        ====================================================== -->
+
         <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
             <div>
@@ -605,7 +613,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <button
                     type="button"
                     onclick="openCreateUnitModal()"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
                 >
 
                     <svg
@@ -629,7 +637,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <button
                     type="button"
                     onclick="openAssignCustomerModal()"
-                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
 
                     <svg
@@ -654,46 +662,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
         </div>
 
-        <!-- API Warning -->
-        <?php if ($loadError): ?>
+        <!-- =====================================================
+             FLASH MESSAGE
+        ====================================================== -->
 
-            <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-
-                <div class="flex gap-3">
-
-                    <svg
-                        class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M12 9v2m0 4h.01M10.29 3.86l-8.82 15a2 2 0 001.71 3h17.64a2 2 0 001.71-3l-8.82-15a2 2 0 00-3.42 0z"
-                        />
-                    </svg>
-
-                    <div>
-
-                        <p class="font-semibold text-amber-800">
-                            Units could not be loaded.
-                        </p>
-
-                        <p class="mt-1 text-sm text-amber-700">
-                            Please refresh the page or check the API connection.
-                        </p>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-        <?php endif; ?>
-
-        <!-- Flash Message -->
         <?php if ($flashMessage !== ''): ?>
 
             <div
@@ -701,12 +673,17 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                     : 'border-red-200 bg-red-50 text-red-800' ?>"
             >
+
                 <?= pp_units_e($flashMessage) ?>
+
             </div>
 
         <?php endif; ?>
 
-        <!-- Statistics -->
+        <!-- =====================================================
+             STATISTICS
+        ====================================================== -->
+
         <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -716,7 +693,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </p>
 
                 <p class="mt-2 text-3xl font-bold text-slate-900">
-                    <?= pp_units_e($totalUnits) ?>
+                    <?= $totalUnits ?>
                 </p>
 
             </div>
@@ -728,7 +705,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </p>
 
                 <p class="mt-2 text-3xl font-bold text-slate-900">
-                    <?= pp_units_e($occupiedUnits) ?>
+                    <?= $occupiedUnits ?>
                 </p>
 
             </div>
@@ -740,7 +717,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </p>
 
                 <p class="mt-2 text-3xl font-bold text-slate-900">
-                    <?= pp_units_e($vacantUnits) ?>
+                    <?= $vacantUnits ?>
                 </p>
 
             </div>
@@ -752,14 +729,17 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </p>
 
                 <p class="mt-2 text-3xl font-bold text-slate-900">
-                    <?= pp_units_e($occupancyRate) ?>%
+                    <?= $occupancyRate ?>%
                 </p>
 
             </div>
 
         </div>
 
-        <!-- Units Table -->
+        <!-- =====================================================
+             UNITS TABLE
+        ====================================================== -->
+
         <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
 
             <div class="border-b border-slate-200 px-5 py-4">
@@ -773,7 +753,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         </h2>
 
                         <p class="text-sm text-slate-500">
-                            <?= pp_units_e($totalUnits) ?>
+                            <?= $totalUnits ?>
                             unit<?= $totalUnits === 1 ? '' : 's' ?>
                             registered
                         </p>
@@ -786,8 +766,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             type="text"
                             id="unitSearch"
                             placeholder="Search units..."
-                            class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64"
                             oninput="filterUnits()"
+                            class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64"
                         >
 
                         <svg
@@ -856,21 +836,17 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                     class="px-5 py-12 text-center"
                                 >
 
-                                    <h3 class="text-sm font-semibold text-slate-900">
-                                        No units found
-                                    </h3>
+                                    <div class="text-slate-500">
 
-                                    <p class="mt-1 text-sm text-slate-500">
-                                        Add your first rental unit to get started.
-                                    </p>
+                                        <p class="text-sm font-semibold text-slate-900">
+                                            No units found
+                                        </p>
 
-                                    <button
-                                        type="button"
-                                        onclick="openCreateUnitModal()"
-                                        class="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-                                    >
-                                        Add Unit
-                                    </button>
+                                        <p class="mt-1 text-sm">
+                                            Add your first rental unit.
+                                        </p>
+
+                                    </div>
 
                                 </td>
 
@@ -882,42 +858,32 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                                 <?php
 
-                                $unitId = pp_units_id(
-                                    $unit['_id'] ?? ''
-                                );
-
                                 $unitNumber =
-                                    pp_units_number($unit);
+                                    pp_unit_number($unit);
 
                                 $propertyName =
-                                    pp_units_property_name($unit);
+                                    pp_unit_property($unit);
 
-                                $propertyLocation =
-                                    pp_units_property_location($unit);
+                                $location =
+                                    pp_unit_location($unit);
 
-                                $tenantName =
-                                    pp_units_tenant_name($unit);
-
-                                $tenantEmail =
-                                    pp_units_tenant_email($unit);
-
-                                $tenantPhone =
-                                    pp_units_tenant_phone($unit);
+                                $tenant =
+                                    pp_unit_tenant($unit);
 
                                 $rent =
-                                    pp_units_rent($unit);
+                                    pp_unit_rent($unit);
 
                                 $status =
-                                    pp_units_status($unit);
+                                    pp_unit_status($unit);
 
-                                $searchText = strtolower(
-                                    $unitNumber . ' ' .
-                                    $propertyName . ' ' .
-                                    $propertyLocation . ' ' .
-                                    $tenantName . ' ' .
-                                    $tenantEmail . ' ' .
-                                    $status
-                                );
+                                $searchText =
+                                    strtolower(
+                                        $unitNumber . ' ' .
+                                        $propertyName . ' ' .
+                                        $location . ' ' .
+                                        $tenant . ' ' .
+                                        $status
+                                    );
 
                                 ?>
 
@@ -944,14 +910,14 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                                     <td class="px-5 py-4">
 
-                                        <div class="whitespace-nowrap text-sm font-medium text-slate-800">
+                                        <div class="text-sm font-medium text-slate-800">
                                             <?= pp_units_e($propertyName) ?>
                                         </div>
 
-                                        <?php if ($propertyLocation !== ''): ?>
+                                        <?php if ($location !== ''): ?>
 
-                                            <div class="mt-0.5 whitespace-nowrap text-xs text-slate-400">
-                                                <?= pp_units_e($propertyLocation) ?>
+                                            <div class="mt-0.5 text-xs text-slate-400">
+                                                <?= pp_units_e($location) ?>
                                             </div>
 
                                         <?php endif; ?>
@@ -960,25 +926,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                                     <td class="px-5 py-4">
 
-                                        <?php if ($tenantName !== 'Vacant'): ?>
+                                        <?php if ($tenant !== 'Vacant'): ?>
 
-                                            <div class="whitespace-nowrap text-sm font-medium text-slate-800">
-                                                <?= pp_units_e($tenantName) ?>
-                                            </div>
-
-                                            <?php if ($tenantEmail !== ''): ?>
-
-                                                <div class="mt-0.5 text-xs text-slate-400">
-                                                    <?= pp_units_e($tenantEmail) ?>
-                                                </div>
-
-                                            <?php elseif ($tenantPhone !== ''): ?>
-
-                                                <div class="mt-0.5 text-xs text-slate-400">
-                                                    <?= pp_units_e($tenantPhone) ?>
-                                                </div>
-
-                                            <?php endif; ?>
+                                            <span class="text-sm font-medium text-slate-800">
+                                                <?= pp_units_e($tenant) ?>
+                                            </span>
 
                                         <?php else: ?>
 
@@ -992,7 +944,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-800">
 
-                                        KSh <?= number_format($rent, 2) ?>
+                                        <?= pp_units_money($rent) ?>
 
                                     </td>
 
@@ -1000,13 +952,13 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                                         <?php if ($status === 'Occupied'): ?>
 
-                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                            <span class="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
                                                 Occupied
                                             </span>
 
                                         <?php else: ?>
 
-                                            <span class="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                            <span class="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
                                                 Vacant
                                             </span>
 
@@ -1039,7 +991,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 <div
     id="createUnitModal"
     class="fixed inset-0 z-50 hidden"
-    aria-hidden="true"
 >
 
     <div
@@ -1060,7 +1011,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </h2>
 
                     <p class="text-sm text-slate-500">
-                        Create a new unit under a property.
+                        Create a new rental unit.
                     </p>
 
                 </div>
@@ -1068,7 +1019,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <button
                     type="button"
                     onclick="closeCreateUnitModal()"
-                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
                 >
 
                     <svg
@@ -1101,7 +1052,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     value="create_unit"
                 >
 
-                <!-- PROPERTY DROPDOWN -->
+                <!-- PROPERTY -->
+
                 <div>
 
                     <label
@@ -1126,28 +1078,31 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                             <?php
 
-                            $propertyId = (string)(
-                                $property['propertyId']
-                                ?? $property['_id']
-                                ?? $property['id']
-                                ?? ''
-                            );
-
-                            $propertyName = trim(
+                            $propertyId =
                                 (string)(
-                                    $property['name']
-                                    ?? $property['propertyName']
-                                    ?? $property['title']
-                                    ?? 'Unnamed Property'
-                                )
-                            );
-
-                            $propertyLocation = trim(
-                                (string)(
-                                    $property['location']
+                                    $property['propertyId']
+                                    ?? $property['_id']
+                                    ?? $property['id']
                                     ?? ''
-                                )
-                            );
+                                );
+
+                            $propertyName =
+                                trim(
+                                    (string)(
+                                        $property['name']
+                                        ?? $property['propertyName']
+                                        ?? $property['title']
+                                        ?? 'Unnamed Property'
+                                    )
+                                );
+
+                            $propertyLocation =
+                                trim(
+                                    (string)(
+                                        $property['location']
+                                        ?? ''
+                                    )
+                                );
 
                             ?>
 
@@ -1156,11 +1111,13 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 <option
                                     value="<?= pp_units_e($propertyId) ?>"
                                 >
+
                                     <?= pp_units_e($propertyName) ?>
 
                                     <?php if ($propertyLocation !== ''): ?>
 
-                                        — <?= pp_units_e($propertyLocation) ?>
+                                        —
+                                        <?= pp_units_e($propertyLocation) ?>
 
                                     <?php endif; ?>
 
@@ -1183,6 +1140,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
 
                 <!-- UNIT NUMBER -->
+
                 <div>
 
                     <label
@@ -1194,8 +1152,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                     <input
                         type="text"
-                        id="unitNumber"
                         name="unitNumber"
+                        id="unitNumber"
                         required
                         placeholder="e.g. A-101"
                         class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
@@ -1204,6 +1162,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
 
                 <!-- RENT -->
+
                 <div>
 
                     <label
@@ -1215,8 +1174,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                     <input
                         type="number"
-                        id="rent"
                         name="rent"
+                        id="rent"
                         min="0"
                         step="0.01"
                         required
@@ -1227,6 +1186,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 </div>
 
                 <!-- STATUS -->
+
                 <div>
 
                     <label
@@ -1237,8 +1197,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </label>
 
                     <select
-                        id="status"
                         name="status"
+                        id="status"
                         class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     >
 
@@ -1254,7 +1214,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                 </div>
 
-                <!-- BUTTONS -->
+                <!-- ACTIONS -->
+
                 <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
 
                     <button
@@ -1289,7 +1250,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 <div
     id="assignCustomerModal"
     class="fixed inset-0 z-50 hidden"
-    aria-hidden="true"
 >
 
     <div
@@ -1318,7 +1278,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                 <button
                     type="button"
                     onclick="closeAssignCustomerModal()"
-                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
                 >
 
                     <svg
@@ -1339,9 +1299,20 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
             </div>
 
-            <div class="space-y-5 p-6">
+            <form
+                method="POST"
+                action="units.php"
+                class="space-y-5 p-6"
+            >
 
-                <!-- VACANT UNIT -->
+                <input
+                    type="hidden"
+                    name="action"
+                    value="assign_customer"
+                >
+
+                <!-- UNIT -->
+
                 <div>
 
                     <label
@@ -1352,7 +1323,9 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </label>
 
                     <select
+                        name="unitId"
                         id="assignUnitId"
+                        required
                         class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     >
 
@@ -1360,19 +1333,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             Select vacant unit
                         </option>
 
-                        <?php foreach ($vacantUnitOptions as $unit): ?>
+                        <?php foreach ($vacantUnitsList as $unit): ?>
 
                             <?php
 
-                            $assignUnitId = pp_units_id(
-                                $unit['_id'] ?? ''
-                            );
+                            $assignUnitId =
+                                pp_unit_id($unit);
 
                             $assignUnitNumber =
-                                pp_units_number($unit);
+                                pp_unit_number($unit);
 
-                            $assignPropertyName =
-                                pp_units_property_name($unit);
+                            $assignProperty =
+                                pp_unit_property($unit);
 
                             ?>
 
@@ -1381,9 +1353,11 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                 <option
                                     value="<?= pp_units_e($assignUnitId) ?>"
                                 >
+
                                     <?= pp_units_e($assignUnitNumber) ?>
-                                    -
-                                    <?= pp_units_e($assignPropertyName) ?>
+                                    —
+                                    <?= pp_units_e($assignProperty) ?>
+
                                 </option>
 
                             <?php endif; ?>
@@ -1392,17 +1366,10 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                     </select>
 
-                    <?php if (empty($vacantUnitOptions)): ?>
-
-                        <p class="mt-1.5 text-xs text-amber-600">
-                            There are currently no vacant units available.
-                        </p>
-
-                    <?php endif; ?>
-
                 </div>
 
-                <!-- CUSTOMER ID -->
+                <!-- CUSTOMER -->
+
                 <div>
 
                     <label
@@ -1414,14 +1381,17 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                     <input
                         type="text"
+                        name="customerId"
                         id="customerId"
+                        required
                         placeholder="Enter customer ID"
-                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     >
 
                 </div>
 
-                <!-- BUTTONS -->
+                <!-- ACTIONS -->
+
                 <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
 
                     <button
@@ -1433,17 +1403,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </button>
 
                     <button
-                        type="button"
-                        onclick="submitAssignCustomer()"
-                        <?= empty($vacantUnitOptions) ? 'disabled' : '' ?>
-                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        type="submit"
+                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
                     >
                         Assign Customer
                     </button>
 
                 </div>
 
-            </div>
+            </form>
 
         </div>
 
@@ -1462,18 +1430,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 function openCreateUnitModal() {
 
     const modal =
-        document.getElementById('createUnitModal');
+        document.getElementById(
+            'createUnitModal'
+        );
 
     if (!modal) {
         return;
     }
 
     modal.classList.remove('hidden');
-
-    modal.setAttribute(
-        'aria-hidden',
-        'false'
-    );
 
     document.body.classList.add(
         'overflow-hidden'
@@ -1483,18 +1448,15 @@ function openCreateUnitModal() {
 function closeCreateUnitModal() {
 
     const modal =
-        document.getElementById('createUnitModal');
+        document.getElementById(
+            'createUnitModal'
+        );
 
     if (!modal) {
         return;
     }
 
     modal.classList.add('hidden');
-
-    modal.setAttribute(
-        'aria-hidden',
-        'true'
-    );
 
     document.body.classList.remove(
         'overflow-hidden'
@@ -1510,18 +1472,15 @@ function closeCreateUnitModal() {
 function openAssignCustomerModal() {
 
     const modal =
-        document.getElementById('assignCustomerModal');
+        document.getElementById(
+            'assignCustomerModal'
+        );
 
     if (!modal) {
         return;
     }
 
     modal.classList.remove('hidden');
-
-    modal.setAttribute(
-        'aria-hidden',
-        'false'
-    );
 
     document.body.classList.add(
         'overflow-hidden'
@@ -1531,18 +1490,15 @@ function openAssignCustomerModal() {
 function closeAssignCustomerModal() {
 
     const modal =
-        document.getElementById('assignCustomerModal');
+        document.getElementById(
+            'assignCustomerModal'
+        );
 
     if (!modal) {
         return;
     }
 
     modal.classList.add('hidden');
-
-    modal.setAttribute(
-        'aria-hidden',
-        'true'
-    );
 
     document.body.classList.remove(
         'overflow-hidden'
@@ -1551,14 +1507,16 @@ function closeAssignCustomerModal() {
 
 /*
 |--------------------------------------------------------------------------
-| Search Units
+| Unit Search
 |--------------------------------------------------------------------------
 */
 
 function filterUnits() {
 
     const input =
-        document.getElementById('unitSearch');
+        document.getElementById(
+            'unitSearch'
+        );
 
     if (!input) {
         return;
@@ -1570,105 +1528,34 @@ function filterUnits() {
             .trim();
 
     const rows =
-        document.querySelectorAll('.unit-row');
+        document.querySelectorAll(
+            '.unit-row'
+        );
 
     rows.forEach(function(row) {
 
         const text =
-            row.dataset.search || '';
+            (
+                row.dataset.search || ''
+            ).toLowerCase();
 
         if (
             search === '' ||
             text.includes(search)
         ) {
 
-            row.classList.remove('hidden');
+            row.classList.remove(
+                'hidden'
+            );
 
         } else {
 
-            row.classList.add('hidden');
-
+            row.classList.add(
+                'hidden'
+            );
         }
 
     });
-}
-
-/*
-|--------------------------------------------------------------------------
-| Assign Customer
-|--------------------------------------------------------------------------
-*/
-
-function submitAssignCustomer() {
-
-    const unitSelect =
-        document.getElementById('assignUnitId');
-
-    const customerInput =
-        document.getElementById('customerId');
-
-    if (!unitSelect || !customerInput) {
-        return;
-    }
-
-    const unitId =
-        unitSelect.value.trim();
-
-    const customerId =
-        customerInput.value.trim();
-
-    if (unitId === '') {
-
-        alert(
-            'Please select a vacant unit.'
-        );
-
-        return;
-    }
-
-    if (customerId === '') {
-
-        alert(
-            'Please enter the customer ID.'
-        );
-
-        return;
-    }
-
-    const form =
-        document.createElement('form');
-
-    form.method = 'POST';
-    form.action = 'units.php';
-
-    const action =
-        document.createElement('input');
-
-    action.type = 'hidden';
-    action.name = 'action';
-    action.value = 'assign_customer';
-
-    const unit =
-        document.createElement('input');
-
-    unit.type = 'hidden';
-    unit.name = 'unitId';
-    unit.value = unitId;
-
-    const customer =
-        document.createElement('input');
-
-    customer.type = 'hidden';
-    customer.name = 'customerId';
-    customer.value = customerId;
-
-    form.appendChild(action);
-    form.appendChild(unit);
-    form.appendChild(customer);
-
-    document.body.appendChild(form);
-
-    form.submit();
 }
 
 /*
