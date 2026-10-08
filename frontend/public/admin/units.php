@@ -40,8 +40,6 @@ function pp_units_money($value): string
  * Treat an API response as successful if:
  *  - HTTP status is 2xx, AND
  *  - if the API explicitly includes a `success` key, it must be truthy.
- *
- * This works whether the backend returns {success:true,...} or just 200/201.
  */
 function pp_api_ok(array $response): bool
 {
@@ -75,7 +73,6 @@ function pp_api_error(array $response, string $fallback = 'Request failed.'): st
 
 /**
  * Extract a list payload from various possible response shapes.
- * Handles: {data:[...]}, {units:[...]}, {properties:[...]}, or a bare list.
  */
 function pp_api_list(array $response, array $keys = ['data']): array
 {
@@ -90,8 +87,8 @@ function pp_api_list(array $response, array $keys = ['data']): array
         }
     }
 
-    // Bare list fallback
     $isList = array_keys($response) === range(0, count($response) - 1);
+
     if ($isList) {
         return array_values(
             array_filter(
@@ -104,6 +101,25 @@ function pp_api_list(array $response, array $keys = ['data']): array
     return [];
 }
 
+/**
+ * Pick the correct ID to send to the backend.
+ *
+ * The backend uses MongoDB and casts IDs to ObjectId. Only `_id` (or `id`)
+ * will satisfy that cast. Never send `propertyId` (a human code like
+ * "PROP-003") as a value — it causes:
+ *   CastError: Cast to ObjectId failed for value "PROP-003" at path "_id"
+ */
+function pp_backend_id(array $row, array $keys = ['_id', 'id']): string
+{
+    foreach ($keys as $key) {
+        if (!empty($row[$key]) && is_string($row[$key])) {
+            return $row[$key];
+        }
+    }
+
+    return '';
+}
+
 /*
 |--------------------------------------------------------------------------
 | Load Units
@@ -111,7 +127,6 @@ function pp_api_list(array $response, array $keys = ['data']): array
 */
 
 $units = [];
-$unitsResponse = [];
 
 try {
     $unitsResponse = api_get('/units');
@@ -167,12 +182,7 @@ try {
 
 function pp_unit_id(array $unit): string
 {
-    return (string)(
-        $unit['_id']
-        ?? $unit['id']
-        ?? $unit['unitId']
-        ?? ''
-    );
+    return pp_backend_id($unit, ['_id', 'id', 'unitId']);
 }
 
 function pp_unit_number(array $unit): string
@@ -327,8 +337,8 @@ if (
     |----------------------------------------------------------------------
     | AUTOMATIC UNIT ID (client-side generation)
     |----------------------------------------------------------------------
-    | If your backend generates its own ID and rejects unknown fields,
-    | remove `unitId` from the payload below.
+    | If your backend rejects client-sent `unitId`, remove that field
+    | from the payload below.
     */
 
     try {
@@ -784,6 +794,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                 <input type="hidden" name="action" value="create_unit">
 
+                <!-- PROPERTY -->
+
                 <div>
                     <label for="propertyId" class="mb-1.5 block text-sm font-semibold text-slate-700">
                         Property
@@ -798,12 +810,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <option value="">Select property</option>
 
                         <?php foreach ($properties as $property): ?>
+
                             <?php
-                            $propertyId = (string)(
-                                $property['propertyId']
-                                ?? $property['_id']
-                                ?? $property['id']
-                                ?? ''
+                            /*
+                             * IMPORTANT:
+                             * The backend casts this value to a MongoDB ObjectId.
+                             * Only `_id` (or `id`) is valid. Sending `propertyId`
+                             * (e.g. "PROP-003") causes:
+                             *   CastError: Cast to ObjectId failed...
+                             */
+                            $optionValue = pp_backend_id(
+                                $property,
+                                ['_id', 'id']
                             );
 
                             $propertyName = trim((string)(
@@ -818,14 +836,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                             ));
                             ?>
 
-                            <?php if ($propertyId !== ''): ?>
-                                <option value="<?= pp_units_e($propertyId) ?>">
+                            <?php if ($optionValue !== ''): ?>
+                                <option value="<?= pp_units_e($optionValue) ?>">
                                     <?= pp_units_e($propertyName) ?>
                                     <?php if ($propertyLocation !== ''): ?>
                                         — <?= pp_units_e($propertyLocation) ?>
                                     <?php endif; ?>
                                 </option>
                             <?php endif; ?>
+
                         <?php endforeach; ?>
 
                     </select>
@@ -836,6 +855,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         </p>
                     <?php endif; ?>
                 </div>
+
+                <!-- UNIT NUMBER -->
 
                 <div>
                     <label for="unitNumber" class="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -850,6 +871,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     >
                 </div>
+
+                <!-- RENT -->
 
                 <div>
                     <label for="rent" class="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -867,6 +890,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     >
                 </div>
 
+                <!-- STATUS -->
+
                 <div>
                     <label for="status" class="mb-1.5 block text-sm font-semibold text-slate-700">
                         Status
@@ -880,6 +905,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         <option value="Occupied">Occupied</option>
                     </select>
                 </div>
+
+                <!-- ACTIONS -->
 
                 <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
                     <button
@@ -944,6 +971,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
                 <input type="hidden" name="action" value="assign_customer">
 
+                <!-- UNIT -->
+
                 <div>
                     <label for="assignUnitId" class="mb-1.5 block text-sm font-semibold text-slate-700">
                         Vacant Unit
@@ -974,6 +1003,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     </select>
                 </div>
 
+                <!-- CUSTOMER -->
+
                 <div>
                     <label for="customerId" class="mb-1.5 block text-sm font-semibold text-slate-700">
                         Customer ID
@@ -987,6 +1018,8 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                         class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     >
                 </div>
+
+                <!-- ACTIONS -->
 
                 <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
                     <button
