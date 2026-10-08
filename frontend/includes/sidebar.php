@@ -89,6 +89,9 @@ if ($isAdminArea) {
     $profileUrl = 'profile.php';
     $settingsUrl = 'settings.php';
 
+    $healthUrl = 'health.php';
+    $databaseUrl = 'database.php';
+
     $logoutUrl = '../logout.php';
 
 } elseif ($isCustomerArea) {
@@ -620,6 +623,87 @@ if (
 
                 </a>
 
+
+                <!-- ====================================================
+                     SYSTEM (ADMIN ONLY) - Health & Database
+                ===================================================== -->
+
+                <details class="group mt-2">
+
+                    <summary
+                        class="flex cursor-pointer select-none items-center gap-3
+                               rounded-lg px-3 py-3 text-sm font-medium
+                               text-slate-300 transition
+                               hover:bg-slate-800 hover:text-white
+                               list-none [&::-webkit-details-marker]:hidden"
+                    >
+
+                        <span class="w-6 shrink-0 text-center">⚙️</span>
+
+                        <span class="min-w-0 flex-1 truncate">
+                            System
+                        </span>
+
+                        <svg
+                            class="h-4 w-4 shrink-0 transition-transform group-open:rotate-90"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M9 5l7 7-7 7"
+                            />
+                        </svg>
+
+                    </summary>
+
+                    <div class="mt-1 space-y-1 pl-6">
+
+                        <a
+                            href="<?= htmlspecialchars(
+                                $healthUrl,
+                                ENT_QUOTES,
+                                'UTF-8'
+                            ) ?>"
+                            class="flex items-center gap-2 rounded-lg
+                                   px-3 py-2 text-sm transition
+                                   <?= nav_active(
+                                       'health.php',
+                                       $currentPage
+                                   ) ?>"
+                        >
+                            <span class="w-5 shrink-0 text-center text-xs">
+                                🩺
+                            </span>
+                            <span>Health</span>
+                        </a>
+
+                        <a
+                            href="<?= htmlspecialchars(
+                                $databaseUrl,
+                                ENT_QUOTES,
+                                'UTF-8'
+                            ) ?>"
+                            class="flex items-center gap-2 rounded-lg
+                                   px-3 py-2 text-sm transition
+                                   <?= nav_active(
+                                       'database.php',
+                                       $currentPage
+                                   ) ?>"
+                        >
+                            <span class="w-5 shrink-0 text-center text-xs">
+                                🗄️
+                            </span>
+                            <span>Database</span>
+                        </a>
+
+                    </div>
+
+                </details>
+
             </div>
 
 
@@ -887,12 +971,6 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('closeSidebar');
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | Open sidebar
-    |--------------------------------------------------------------------------
-    */
-
     function openSidebar() {
 
         if (!sidebar) {
@@ -915,12 +993,6 @@ document.addEventListener('DOMContentLoaded', function () {
         document.body.classList.add('overflow-hidden');
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Close sidebar
-    |--------------------------------------------------------------------------
-    */
 
     function closeSidebar() {
 
@@ -945,12 +1017,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | Mobile menu button
-    |--------------------------------------------------------------------------
-    */
-
     if (openButton) {
 
         openButton.addEventListener(
@@ -966,12 +1032,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Close button
-    |--------------------------------------------------------------------------
-    */
 
     if (closeButton) {
 
@@ -989,12 +1049,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | Overlay
-    |--------------------------------------------------------------------------
-    */
-
     if (overlay) {
 
         overlay.addEventListener(
@@ -1008,12 +1062,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Close when navigation link is clicked
-    |--------------------------------------------------------------------------
-    */
 
     if (sidebar) {
 
@@ -1038,12 +1086,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    /*
-    |--------------------------------------------------------------------------
-    | Escape key
-    |--------------------------------------------------------------------------
-    */
-
     document.addEventListener(
         'keydown',
         function (event) {
@@ -1055,12 +1097,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     );
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Window resize
-    |--------------------------------------------------------------------------
-    */
 
     window.addEventListener(
         'resize',

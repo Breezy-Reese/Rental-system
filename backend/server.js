@@ -26,6 +26,7 @@ const expenseRoutes = require("./routes/expenseRoutes");
 const maintenanceRoutes = require("./routes/maintenanceRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const mpesaRoutes = require("./routes/mpesaRoutes");
+const systemRoutes = require("./routes/systemRoutes");
 
 /*
 |--------------------------------------------------------------------------
@@ -325,6 +326,17 @@ app.use(
 app.use(
   "/api/mpesa",
   mpesaRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
+| System
+|--------------------------------------------------------------------------
+*/
+
+app.use(
+  "/api/system",
+  systemRoutes
 );
 
 /*
