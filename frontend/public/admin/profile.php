@@ -17,13 +17,6 @@ require_once "../../includes/sidebar.php";
 
         <div class="flex h-16 items-center px-4 sm:px-6 lg:px-8">
 
-            <button
-                id="mobileMenuButton"
-                type="button"
-                class="mr-4 rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden">
-                ☰
-            </button>
-
             <h1 class="text-lg font-semibold text-slate-900">
                 Profile
             </h1>

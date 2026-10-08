@@ -7,7 +7,7 @@ require_once "../../includes/api.php";
 
 /*
 |--------------------------------------------------------------------------
-| Handle maintenance status/response update
+| Handle status/response update
 |--------------------------------------------------------------------------
 */
 
@@ -18,8 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_id'])) {
     $response = trim($_POST['response'] ?? '');
 
     if ($id !== '') {
-
-        api_put('/maintenance/' . rawurlencode($id), [
+        api_put('/maintenance/' . $id, [
             'status' => $status,
             'response' => $response,
         ]);
@@ -29,23 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_id'])) {
     exit;
 }
 
-/*
-|--------------------------------------------------------------------------
-| Load maintenance requests
-|--------------------------------------------------------------------------
-*/
-
-$maintenanceResponse = api_get('/maintenance');
-
-$maintenanceRequests = [];
-
-if (
-    !empty($maintenanceResponse['success']) &&
-    isset($maintenanceResponse['data']) &&
-    is_array($maintenanceResponse['data'])
-) {
-    $maintenanceRequests = $maintenanceResponse['data'];
-}
+require_once "../../includes/data.php";
 
 $pageTitle = "Maintenance";
 
@@ -59,13 +42,6 @@ require_once "../../includes/sidebar.php";
 
         <div class="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
 
-            <button
-                id="mobileMenuButton"
-                type="button"
-                class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden">
-                ☰
-            </button>
-
             <div>
                 <h1 class="text-lg font-semibold text-slate-900">
                     Maintenance
@@ -76,11 +52,10 @@ require_once "../../includes/sidebar.php";
                 </p>
             </div>
 
-            <div class="w-9"></div>
-
         </div>
 
     </header>
+
 
     <div class="p-4 sm:p-6 lg:p-8">
 
@@ -104,16 +79,6 @@ require_once "../../includes/sidebar.php";
 
         <?php endif; ?>
 
-        <?php if (
-            empty($maintenanceRequests) &&
-            empty($maintenanceResponse['success'])
-        ): ?>
-
-            <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                Unable to load maintenance requests.
-            </div>
-
-        <?php endif; ?>
 
         <div class="space-y-4">
 
@@ -128,6 +93,7 @@ require_once "../../includes/sidebar.php";
             <?php foreach ($maintenanceRequests as $request): ?>
 
                 <?php
+
                 $status = $request['status'] ?? 'Pending';
 
                 $statusClass = match ($status) {
@@ -139,32 +105,8 @@ require_once "../../includes/sidebar.php";
                     default => 'bg-amber-100 text-amber-700'
                 };
 
-                $requestId = $request['_id']
-                    ?? $request['maintenanceId']
-                    ?? $request['id']
-                    ?? '';
+                $requestId = $request['_id'] ?? $request['id'] ?? '';
 
-                $tenant = $request['tenantId'] ?? [];
-                $property = $request['propertyId'] ?? [];
-                $unit = $request['unitId'] ?? [];
-
-                $tenantName = is_array($tenant)
-                    ? ($tenant['name'] ?? '-')
-                    : '-';
-
-                $propertyName = is_array($property)
-                    ? ($property['name'] ?? '-')
-                    : '-';
-
-                $propertyLocation = is_array($property)
-                    ? ($property['location'] ?? '')
-                    : '';
-
-                $unitNumber = is_array($unit)
-                    ? ($unit['unitNumber'] ?? '-')
-                    : '-';
-
-                $responseText = $request['response'] ?? '';
                 ?>
 
                 <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -184,39 +126,27 @@ require_once "../../includes/sidebar.php";
                                 </h3>
 
                                 <p class="mt-1 text-sm text-slate-500">
-                                    <?= e($propertyName) ?>
+                                    <?= e($request['property'] ?? 'N/A') ?>
                                     •
-                                    <?= e($unitNumber) ?>
+                                    <?= e($request['unit'] ?? 'N/A') ?>
                                 </p>
-
-                                <?php if ($propertyLocation !== ''): ?>
-
-                                    <p class="mt-1 text-xs text-slate-400">
-                                        <?= e($propertyLocation) ?>
-                                    </p>
-
-                                <?php endif; ?>
 
                                 <p class="mt-2 text-sm text-slate-600">
                                     Reported by:
-                                    <?= e($tenantName) ?>
+                                    <?= e($request['tenant'] ?? '-') ?>
                                 </p>
 
                                 <?php if (!empty($request['description'])): ?>
-
                                     <p class="mt-2 text-sm text-slate-600">
                                         <?= e($request['description']) ?>
                                     </p>
-
                                 <?php endif; ?>
 
-                                <?php if ($responseText !== ''): ?>
-
+                                <?php if (!empty($request['response'])): ?>
                                     <div class="mt-3 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-800">
                                         <span class="font-medium">Your response:</span>
-                                        <?= e($responseText) ?>
+                                        <?= e($request['response']) ?>
                                     </div>
-
                                 <?php endif; ?>
 
                             </div>
@@ -231,11 +161,7 @@ require_once "../../includes/sidebar.php";
 
                             <button
                                 type="button"
-                                onclick='openRespond(
-                                    <?= json_encode($requestId) ?>,
-                                    <?= json_encode($status) ?>,
-                                    <?= json_encode($responseText) ?>
-                                )'
+                                onclick="openRespond('<?= e($requestId) ?>', '<?= e($status) ?>', <?= htmlspecialchars(json_encode($request['response'] ?? ''), ENT_QUOTES, 'UTF-8') ?>)"
                                 class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">
                                 Respond
                             </button>
@@ -254,8 +180,8 @@ require_once "../../includes/sidebar.php";
 
 </main>
 
-<!-- Respond Modal -->
 
+<!-- Respond Modal -->
 <div
     id="respondModal"
     class="fixed inset-0 z-[100] hidden overflow-y-auto bg-black/50 px-4 py-8">
@@ -279,13 +205,9 @@ require_once "../../includes/sidebar.php";
 
         <form method="POST" class="space-y-5 p-6">
 
-            <input
-                type="hidden"
-                name="maintenance_id"
-                id="respond_id">
+            <input type="hidden" name="maintenance_id" id="respond_id">
 
             <div>
-
                 <label class="mb-2 block text-sm font-medium text-slate-700">
                     Status
                 </label>
@@ -294,19 +216,15 @@ require_once "../../includes/sidebar.php";
                     name="status"
                     id="respond_status"
                     class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-
                     <option value="Pending">Pending</option>
                     <option value="Assigned">Assigned</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Completed">Completed</option>
                     <option value="Cancelled">Cancelled</option>
-
                 </select>
-
             </div>
 
             <div>
-
                 <label class="mb-2 block text-sm font-medium text-slate-700">
                     Response to tenant
                 </label>
@@ -317,7 +235,6 @@ require_once "../../includes/sidebar.php";
                     rows="4"
                     placeholder="Let the tenant know what's happening..."
                     class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"></textarea>
-
             </div>
 
             <div class="flex justify-end gap-3 pt-2">
@@ -347,7 +264,7 @@ require_once "../../includes/sidebar.php";
 function openRespond(id, status, response) {
     document.getElementById('respond_id').value = id;
     document.getElementById('respond_status').value = status;
-    document.getElementById('respond_text').value = response || '';
+    document.getElementById('respond_text').value = response;
     document.getElementById('respondModal').classList.remove('hidden');
 }
 </script>

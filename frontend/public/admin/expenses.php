@@ -149,31 +149,7 @@ require_once "../../includes/sidebar.php";
 
 ?>
 
-<main class="min-h-screen bg-slate-50">
-
-    <!-- Mobile header -->
-    <div class="lg:hidden bg-white border-b border-slate-200 px-4 py-3 flex items-center gap-3">
-
-        <button
-            id="mobileMenuButton"
-            type="button"
-            class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition"
-            aria-label="Open navigation"
-        >
-            ☰
-        </button>
-
-        <div>
-            <h1 class="text-lg font-bold text-slate-900">
-                Expenses
-            </h1>
-
-            <p class="text-xs text-slate-500">
-                Property expenses
-            </p>
-        </div>
-
-    </div>
+<main class="min-h-screen bg-slate-50 lg:ml-64">
 
     <!-- Page content -->
     <div class="p-4 sm:p-6 lg:p-8">
