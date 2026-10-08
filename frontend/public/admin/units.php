@@ -1,21 +1,15 @@
 <?php
 
+/**
+ * ============================================================
+ * PropertyPro - Admin Units
+ * ============================================================
+ */
+
 require_once __DIR__ . '/../../includes/api.php';
 require_once __DIR__ . '/../../includes/auth.php';
 
-/*
-|--------------------------------------------------------------------------
-| Admin protection
-|--------------------------------------------------------------------------
-*/
-
 require_admin();
-
-/*
-|--------------------------------------------------------------------------
-| Page settings
-|--------------------------------------------------------------------------
-*/
 
 $pageTitle = 'Units';
 
@@ -36,30 +30,18 @@ if (!function_exists('pp_units_e')) {
     }
 }
 
-/**
- * Get units directly from the API.
- *
- * The API response is:
- *
- * [
- *     'success' => true,
- *     'count'   => 8,
- *     'data'    => [
- *         ...
- *     ]
- * ]
- */
+/*
+|--------------------------------------------------------------------------
+| Load Units
+|--------------------------------------------------------------------------
+*/
+
 function pp_units_get(): array
 {
     try {
-
         $response = api_get('/units');
 
         if (!is_array($response)) {
-            error_log(
-                'PropertyPro Units: Invalid API response.'
-            );
-
             return [
                 'success' => false,
                 'data' => [],
@@ -84,34 +66,53 @@ function pp_units_get(): array
     }
 }
 
-/**
- * Convert API data into a simple units array.
- */
-function pp_units_rows(array $response): array
-{
-    $data = $response['data'] ?? [];
+/*
+|--------------------------------------------------------------------------
+| Load Properties
+|--------------------------------------------------------------------------
+*/
 
-    if (!is_array($data)) {
+function pp_units_get_properties(): array
+{
+    try {
+        $response = api_get('/properties');
+
+        if (!is_array($response)) {
+            return [];
+        }
+
+        $data = $response['data'] ?? [];
+
+        if (!is_array($data)) {
+            return [];
+        }
+
+        return array_values(
+            array_filter(
+                $data,
+                static function ($property): bool {
+                    return is_array($property);
+                }
+            )
+        );
+
+    } catch (Throwable $e) {
+
+        error_log(
+            'PropertyPro Properties API error: ' .
+            $e->getMessage()
+        );
+
         return [];
     }
-
-    /*
-     * The /units endpoint returns the units directly
-     * inside data.
-     */
-    return array_values(
-        array_filter(
-            $data,
-            static function ($unit): bool {
-                return is_array($unit);
-            }
-        )
-    );
 }
 
-/**
- * Extract MongoDB/API ID.
- */
+/*
+|--------------------------------------------------------------------------
+| Unit Helpers
+|--------------------------------------------------------------------------
+*/
+
 function pp_units_id($value): string
 {
     if (is_array($value)) {
@@ -133,9 +134,6 @@ function pp_units_id($value): string
     return (string)($value ?? '');
 }
 
-/**
- * Unit number.
- */
 function pp_units_number(array $unit): string
 {
     return trim(
@@ -149,12 +147,6 @@ function pp_units_number(array $unit): string
     );
 }
 
-/**
- * Property name.
- *
- * In the actual API response propertyId is a populated
- * object containing name and location.
- */
 function pp_units_property_name(array $unit): string
 {
     $property = $unit['propertyId'] ?? null;
@@ -182,9 +174,6 @@ function pp_units_property_name(array $unit): string
     return 'Unknown Property';
 }
 
-/**
- * Property location.
- */
 function pp_units_property_location(array $unit): string
 {
     $property = $unit['propertyId'] ?? null;
@@ -210,12 +199,6 @@ function pp_units_property_location(array $unit): string
     return '';
 }
 
-/**
- * Tenant name.
- *
- * In the actual API response tenantId is a populated
- * object containing name, email and phone.
- */
 function pp_units_tenant_name(array $unit): string
 {
     $tenant = $unit['tenantId'] ?? null;
@@ -252,9 +235,6 @@ function pp_units_tenant_name(array $unit): string
     return 'Vacant';
 }
 
-/**
- * Tenant email.
- */
 function pp_units_tenant_email(array $unit): string
 {
     $tenant = $unit['tenantId'] ?? null;
@@ -266,9 +246,6 @@ function pp_units_tenant_email(array $unit): string
     return '';
 }
 
-/**
- * Tenant phone.
- */
 function pp_units_tenant_phone(array $unit): string
 {
     $tenant = $unit['tenantId'] ?? null;
@@ -280,9 +257,6 @@ function pp_units_tenant_phone(array $unit): string
     return '';
 }
 
-/**
- * Unit status.
- */
 function pp_units_status(array $unit): string
 {
     $status = strtolower(
@@ -308,9 +282,6 @@ function pp_units_status(array $unit): string
     return 'Vacant';
 }
 
-/**
- * Unit rent.
- */
 function pp_units_rent(array $unit): float
 {
     return (float)(
@@ -323,21 +294,36 @@ function pp_units_rent(array $unit): float
 
 /*
 |--------------------------------------------------------------------------
-| Load units
+| Load Data
 |--------------------------------------------------------------------------
 */
 
 $unitsResponse = pp_units_get();
 
-$units = pp_units_rows($unitsResponse);
+$units = [];
+
+if (
+    is_array($unitsResponse['data'] ?? null)
+) {
+    $units = array_values(
+        array_filter(
+            $unitsResponse['data'],
+            static function ($unit): bool {
+                return is_array($unit);
+            }
+        )
+    );
+}
 
 $loadError = (
     ($unitsResponse['success'] ?? false) !== true
 );
 
+$properties = pp_units_get_properties();
+
 /*
 |--------------------------------------------------------------------------
-| Handle flash messages
+| Flash Messages
 |--------------------------------------------------------------------------
 */
 
@@ -385,8 +371,7 @@ if (
         $_SESSION['units_flash_message'] =
             'Please complete all required unit fields.';
 
-        $_SESSION['units_flash_type'] =
-            'error';
+        $_SESSION['units_flash_type'] = 'error';
 
         header('Location: units.php');
         exit;
@@ -483,16 +468,14 @@ if (
         exit;
     }
 
-    $payload = [
-        'unitId'     => $unitId,
-        'customerId' => $customerId
-    ];
-
     try {
 
         $response = api_post(
             '/leases/assign-customer',
-            $payload
+            [
+                'unitId'     => $unitId,
+                'customerId' => $customerId
+            ]
         );
 
         if (
@@ -540,7 +523,7 @@ if (
 
 /*
 |--------------------------------------------------------------------------
-| Calculate statistics
+| Statistics
 |--------------------------------------------------------------------------
 */
 
@@ -572,7 +555,7 @@ $occupancyRate =
 
 /*
 |--------------------------------------------------------------------------
-| Vacant units
+| Vacant Units
 |--------------------------------------------------------------------------
 */
 
@@ -600,409 +583,280 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
 <main class="min-h-screen bg-slate-50 lg:ml-64">
 
+    <div class="px-4 py-6 sm:px-6 lg:px-8">
 
-<div class="px-4 py-6 sm:px-6 lg:px-8">
+        <!-- Page Header -->
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-    <!-- Page Header -->
-    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
 
-        <div>
+                <h1 class="text-2xl font-bold text-slate-900">
+                    Units
+                </h1>
 
-            <h1 class="text-2xl font-bold text-slate-900">
-                Units
-            </h1>
+                <p class="mt-1 text-sm text-slate-500">
+                    Manage rental units, occupancy and customer assignments.
+                </p>
 
-            <p class="mt-1 text-sm text-slate-500">
-                Manage rental units, occupancy and customer assignments.
-            </p>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+
+                <button
+                    type="button"
+                    onclick="openCreateUnitModal()"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                >
+
+                    <svg
+                        class="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 4v16m8-8H4"
+                        />
+                    </svg>
+
+                    Add Unit
+
+                </button>
+
+                <button
+                    type="button"
+                    onclick="openAssignCustomerModal()"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                >
+
+                    <svg
+                        class="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-8a4 4 0 100-8 4 4 0 000 8zm7-3h4m-2-2v4"
+                        />
+                    </svg>
+
+                    Assign Customer
+
+                </button>
+
+            </div>
 
         </div>
 
-        <div class="flex flex-wrap gap-3">
+        <!-- API Warning -->
+        <?php if ($loadError): ?>
 
-            <button
-                type="button"
-                onclick="openCreateUnitModal()"
-                class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+
+                <div class="flex gap-3">
+
+                    <svg
+                        class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 9v2m0 4h.01M10.29 3.86l-8.82 15a2 2 0 001.71 3h17.64a2 2 0 001.71-3l-8.82-15a2 2 0 00-3.42 0z"
+                        />
+                    </svg>
+
+                    <div>
+
+                        <p class="font-semibold text-amber-800">
+                            Units could not be loaded.
+                        </p>
+
+                        <p class="mt-1 text-sm text-amber-700">
+                            Please refresh the page or check the API connection.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        <?php endif; ?>
+
+        <!-- Flash Message -->
+        <?php if ($flashMessage !== ''): ?>
+
+            <div
+                class="mb-6 rounded-xl border px-4 py-3 <?= $flashType === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-red-200 bg-red-50 text-red-800' ?>"
             >
+                <?= pp_units_e($flashMessage) ?>
+            </div>
 
-                <svg
-                    class="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M12 4v16m8-8H4"
-                    />
-                </svg>
+        <?php endif; ?>
 
-                Add Unit
+        <!-- Statistics -->
+        <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-            </button>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
-            <button
-                type="button"
-                onclick="openAssignCustomerModal()"
-                class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
+                <p class="text-sm font-medium text-slate-500">
+                    Total Units
+                </p>
 
-                <svg
-                    class="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-8a4 4 0 100-8 4 4 0 000 8zm7-3h4m-2-2v4"
-                    />
-                </svg>
+                <p class="mt-2 text-3xl font-bold text-slate-900">
+                    <?= pp_units_e($totalUnits) ?>
+                </p>
 
-                Assign Customer
+            </div>
 
-            </button>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
-        </div>
+                <p class="text-sm font-medium text-slate-500">
+                    Occupied
+                </p>
 
-    </div>
+                <p class="mt-2 text-3xl font-bold text-slate-900">
+                    <?= pp_units_e($occupiedUnits) ?>
+                </p>
 
-    <!-- API warning -->
-    <?php if ($loadError): ?>
+            </div>
 
-        <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
-            <div class="flex gap-3">
+                <p class="text-sm font-medium text-slate-500">
+                    Vacant
+                </p>
 
-                <svg
-                    class="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M12 9v2m0 4h.01M10.29 3.86l-8.82 15a2 2 0 001.71 3h17.64a2 2 0 001.71-3l-8.82-15a2 2 0 00-3.42 0z"
-                    />
-                </svg>
+                <p class="mt-2 text-3xl font-bold text-slate-900">
+                    <?= pp_units_e($vacantUnits) ?>
+                </p>
 
-                <div>
+            </div>
 
-                    <p class="font-semibold text-amber-800">
-                        Units could not be loaded.
-                    </p>
+            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
 
-                    <p class="mt-1 text-sm text-amber-700">
-                        Please refresh the page or check the API connection.
-                    </p>
+                <p class="text-sm font-medium text-slate-500">
+                    Occupancy Rate
+                </p>
 
-                </div>
+                <p class="mt-2 text-3xl font-bold text-slate-900">
+                    <?= pp_units_e($occupancyRate) ?>%
+                </p>
 
             </div>
 
         </div>
 
-    <?php endif; ?>
+        <!-- Units Table -->
+        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
 
-    <!-- Flash message -->
-    <?php if ($flashMessage !== ''): ?>
+            <div class="border-b border-slate-200 px-5 py-4">
 
-        <div
-            class="mb-6 rounded-xl border px-4 py-3 <?= $flashType === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                : 'border-red-200 bg-red-50 text-red-800' ?>"
-        >
-            <?= pp_units_e($flashMessage) ?>
-        </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-    <?php endif; ?>
+                    <div>
 
-    <!-- Statistics -->
-    <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <h2 class="text-lg font-semibold text-slate-900">
+                            Rental Units
+                        </h2>
 
-        <!-- Total -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p class="text-sm text-slate-500">
+                            <?= pp_units_e($totalUnits) ?>
+                            unit<?= $totalUnits === 1 ? '' : 's' ?>
+                            registered
+                        </p>
 
-            <div class="flex items-center justify-between">
+                    </div>
 
-                <div>
+                    <div class="relative">
 
-                    <p class="text-sm font-medium text-slate-500">
-                        Total Units
-                    </p>
+                        <input
+                            type="text"
+                            id="unitSearch"
+                            placeholder="Search units..."
+                            class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64"
+                            oninput="filterUnits()"
+                        >
 
-                    <p class="mt-2 text-3xl font-bold text-slate-900">
-                        <?= pp_units_e($totalUnits) ?>
-                    </p>
+                        <svg
+                            class="absolute left-3 top-2.5 h-5 w-5 text-slate-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M21 21l-4.35-4.35m2.35-5.65a8 8 0 11-16 0 8 8 0 0116 0z"
+                            />
+                        </svg>
 
-                </div>
-
-                <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-
-                    <svg
-                        class="h-6 w-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M3 21h18M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16M9 7h2m-2 4h2m2-4h2m-2 4h2M9 21v-4h6v4"
-                        />
-                    </svg>
+                    </div>
 
                 </div>
 
             </div>
 
-        </div>
+            <div class="overflow-x-auto">
 
-        <!-- Occupied -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <table class="min-w-full divide-y divide-slate-200">
 
-            <div class="flex items-center justify-between">
-
-                <div>
-
-                    <p class="text-sm font-medium text-slate-500">
-                        Occupied
-                    </p>
-
-                    <p class="mt-2 text-3xl font-bold text-slate-900">
-                        <?= pp_units_e($occupiedUnits) ?>
-                    </p>
-
-                </div>
-
-                <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-
-                    <svg
-                        class="h-6 w-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M5 13l4 4L19 7"
-                        />
-                    </svg>
-
-                </div>
-
-            </div>
-
-        </div>
-
-        <!-- Vacant -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-
-            <div class="flex items-center justify-between">
-
-                <div>
-
-                    <p class="text-sm font-medium text-slate-500">
-                        Vacant
-                    </p>
-
-                    <p class="mt-2 text-3xl font-bold text-slate-900">
-                        <?= pp_units_e($vacantUnits) ?>
-                    </p>
-
-                </div>
-
-                <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-
-                    <svg
-                        class="h-6 w-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                    </svg>
-
-                </div>
-
-            </div>
-
-        </div>
-
-        <!-- Occupancy -->
-        <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-
-            <div class="flex items-center justify-between">
-
-                <div>
-
-                    <p class="text-sm font-medium text-slate-500">
-                        Occupancy Rate
-                    </p>
-
-                    <p class="mt-2 text-3xl font-bold text-slate-900">
-                        <?= pp_units_e($occupancyRate) ?>%
-                    </p>
-
-                </div>
-
-                <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-
-                    <svg
-                        class="h-6 w-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M9 19V6l12-3v13M9 19a3 3 0 11-6 0 3 3 0 016 0zm12-3a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                    </svg>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-    <!-- Units table -->
-    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-
-        <div class="border-b border-slate-200 px-5 py-4">
-
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-                <div>
-
-                    <h2 class="text-lg font-semibold text-slate-900">
-                        Rental Units
-                    </h2>
-
-                    <p class="text-sm text-slate-500">
-                        <?= pp_units_e($totalUnits) ?>
-                        unit<?= $totalUnits === 1 ? '' : 's' ?>
-                        registered
-                    </p>
-
-                </div>
-
-                <div class="relative">
-
-                    <input
-                        type="text"
-                        id="unitSearch"
-                        placeholder="Search units..."
-                        class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64"
-                        oninput="filterUnits()"
-                    >
-
-                    <svg
-                        class="absolute left-3 top-2.5 h-5 w-5 text-slate-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M21 21l-4.35-4.35m2.35-5.65a8 8 0 11-16 0 8 8 0 0116 0z"
-                        />
-                    </svg>
-
-                </div>
-
-            </div>
-
-        </div>
-
-        <div class="overflow-x-auto">
-
-            <table class="min-w-full divide-y divide-slate-200">
-
-                <thead class="bg-slate-50">
-
-                    <tr>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                            Unit
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                            Property
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                            Tenant
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                            Monthly Rent
-                        </th>
-
-                        <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                            Status
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody
-                    id="unitsTableBody"
-                    class="divide-y divide-slate-200 bg-white"
-                >
-
-                    <?php if (empty($units)): ?>
+                    <thead class="bg-slate-50">
 
                         <tr>
 
-                            <td
-                                colspan="5"
-                                class="px-5 py-12 text-center"
-                            >
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Unit
+                            </th>
 
-                                <div class="mx-auto max-w-sm">
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Property
+                            </th>
 
-                                    <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Tenant
+                            </th>
 
-                                        <svg
-                                            class="h-7 w-7 text-slate-400"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M3 21h18M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"
-                                            />
-                                        </svg>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Monthly Rent
+                            </th>
 
-                                    </div>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Status
+                            </th>
 
-                                    <h3 class="mt-4 text-sm font-semibold text-slate-900">
+                        </tr>
+
+                    </thead>
+
+                    <tbody
+                        id="unitsTableBody"
+                        class="divide-y divide-slate-200 bg-white"
+                    >
+
+                        <?php if (empty($units)): ?>
+
+                            <tr>
+
+                                <td
+                                    colspan="5"
+                                    class="px-5 py-12 text-center"
+                                >
+
+                                    <h3 class="text-sm font-semibold text-slate-900">
                                         No units found
                                     </h3>
 
@@ -1018,167 +872,163 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                         Add Unit
                                     </button>
 
-                                </div>
-
-                            </td>
-
-                        </tr>
-
-                    <?php else: ?>
-
-                        <?php foreach ($units as $unit): ?>
-
-                            <?php
-
-                            $unitId = pp_units_id(
-                                $unit['_id'] ?? ''
-                            );
-
-                            $unitNumber =
-                                pp_units_number($unit);
-
-                            $propertyName =
-                                pp_units_property_name($unit);
-
-                            $propertyLocation =
-                                pp_units_property_location($unit);
-
-                            $tenantName =
-                                pp_units_tenant_name($unit);
-
-                            $tenantEmail =
-                                pp_units_tenant_email($unit);
-
-                            $tenantPhone =
-                                pp_units_tenant_phone($unit);
-
-                            $rent =
-                                pp_units_rent($unit);
-
-                            $status =
-                                pp_units_status($unit);
-
-                            $searchText = strtolower(
-                                $unitNumber . ' ' .
-                                $propertyName . ' ' .
-                                $propertyLocation . ' ' .
-                                $tenantName . ' ' .
-                                $tenantEmail . ' ' .
-                                $status
-                            );
-
-                            ?>
-
-                            <tr
-                                class="unit-row hover:bg-slate-50"
-                                data-search="<?= pp_units_e($searchText) ?>"
-                            >
-
-                                <!-- Unit -->
-                                <td class="whitespace-nowrap px-5 py-4">
-
-                                    <div class="font-semibold text-slate-900">
-                                        <?= pp_units_e($unitNumber) ?>
-                                    </div>
-
-                                    <div class="mt-0.5 text-xs text-slate-400">
-                                        <?= pp_units_e($unit['type'] ?? '') ?>
-                                    </div>
-
-                                </td>
-
-                                <!-- Property -->
-                                <td class="px-5 py-4">
-
-                                    <div class="whitespace-nowrap text-sm font-medium text-slate-800">
-                                        <?= pp_units_e($propertyName) ?>
-                                    </div>
-
-                                    <?php if ($propertyLocation !== ''): ?>
-
-                                        <div class="mt-0.5 whitespace-nowrap text-xs text-slate-400">
-                                            <?= pp_units_e($propertyLocation) ?>
-                                        </div>
-
-                                    <?php endif; ?>
-
-                                </td>
-
-                                <!-- Tenant -->
-                                <td class="px-5 py-4">
-
-                                    <?php if ($tenantName !== 'Vacant'): ?>
-
-                                        <div class="whitespace-nowrap text-sm font-medium text-slate-800">
-                                            <?= pp_units_e($tenantName) ?>
-                                        </div>
-
-                                        <?php if ($tenantEmail !== ''): ?>
-
-                                            <div class="mt-0.5 text-xs text-slate-400">
-                                                <?= pp_units_e($tenantEmail) ?>
-                                            </div>
-
-                                        <?php elseif ($tenantPhone !== ''): ?>
-
-                                            <div class="mt-0.5 text-xs text-slate-400">
-                                                <?= pp_units_e($tenantPhone) ?>
-                                            </div>
-
-                                        <?php endif; ?>
-
-                                    <?php else: ?>
-
-                                        <span class="text-sm text-slate-400">
-                                            Vacant
-                                        </span>
-
-                                    <?php endif; ?>
-
-                                </td>
-
-                                <!-- Rent -->
-                                <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-800">
-
-                                    KSh <?= number_format($rent, 2) ?>
-
-                                </td>
-
-                                <!-- Status -->
-                                <td class="whitespace-nowrap px-5 py-4">
-
-                                    <?php if ($status === 'Occupied'): ?>
-
-                                        <span class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                            Occupied
-                                        </span>
-
-                                    <?php else: ?>
-
-                                        <span class="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                                            Vacant
-                                        </span>
-
-                                    <?php endif; ?>
-
                                 </td>
 
                             </tr>
 
-                        <?php endforeach; ?>
+                        <?php else: ?>
 
-                    <?php endif; ?>
+                            <?php foreach ($units as $unit): ?>
 
-                </tbody>
+                                <?php
 
-            </table>
+                                $unitId = pp_units_id(
+                                    $unit['_id'] ?? ''
+                                );
+
+                                $unitNumber =
+                                    pp_units_number($unit);
+
+                                $propertyName =
+                                    pp_units_property_name($unit);
+
+                                $propertyLocation =
+                                    pp_units_property_location($unit);
+
+                                $tenantName =
+                                    pp_units_tenant_name($unit);
+
+                                $tenantEmail =
+                                    pp_units_tenant_email($unit);
+
+                                $tenantPhone =
+                                    pp_units_tenant_phone($unit);
+
+                                $rent =
+                                    pp_units_rent($unit);
+
+                                $status =
+                                    pp_units_status($unit);
+
+                                $searchText = strtolower(
+                                    $unitNumber . ' ' .
+                                    $propertyName . ' ' .
+                                    $propertyLocation . ' ' .
+                                    $tenantName . ' ' .
+                                    $tenantEmail . ' ' .
+                                    $status
+                                );
+
+                                ?>
+
+                                <tr
+                                    class="unit-row hover:bg-slate-50"
+                                    data-search="<?= pp_units_e($searchText) ?>"
+                                >
+
+                                    <td class="whitespace-nowrap px-5 py-4">
+
+                                        <div class="font-semibold text-slate-900">
+                                            <?= pp_units_e($unitNumber) ?>
+                                        </div>
+
+                                        <?php if (!empty($unit['type'])): ?>
+
+                                            <div class="mt-0.5 text-xs text-slate-400">
+                                                <?= pp_units_e($unit['type']) ?>
+                                            </div>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+                                    <td class="px-5 py-4">
+
+                                        <div class="whitespace-nowrap text-sm font-medium text-slate-800">
+                                            <?= pp_units_e($propertyName) ?>
+                                        </div>
+
+                                        <?php if ($propertyLocation !== ''): ?>
+
+                                            <div class="mt-0.5 whitespace-nowrap text-xs text-slate-400">
+                                                <?= pp_units_e($propertyLocation) ?>
+                                            </div>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+                                    <td class="px-5 py-4">
+
+                                        <?php if ($tenantName !== 'Vacant'): ?>
+
+                                            <div class="whitespace-nowrap text-sm font-medium text-slate-800">
+                                                <?= pp_units_e($tenantName) ?>
+                                            </div>
+
+                                            <?php if ($tenantEmail !== ''): ?>
+
+                                                <div class="mt-0.5 text-xs text-slate-400">
+                                                    <?= pp_units_e($tenantEmail) ?>
+                                                </div>
+
+                                            <?php elseif ($tenantPhone !== ''): ?>
+
+                                                <div class="mt-0.5 text-xs text-slate-400">
+                                                    <?= pp_units_e($tenantPhone) ?>
+                                                </div>
+
+                                            <?php endif; ?>
+
+                                        <?php else: ?>
+
+                                            <span class="text-sm text-slate-400">
+                                                Vacant
+                                            </span>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-800">
+
+                                        KSh <?= number_format($rent, 2) ?>
+
+                                    </td>
+
+                                    <td class="whitespace-nowrap px-5 py-4">
+
+                                        <?php if ($status === 'Occupied'): ?>
+
+                                            <span class="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                                Occupied
+                                            </span>
+
+                                        <?php else: ?>
+
+                                            <span class="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                                Vacant
+                                            </span>
+
+                                        <?php endif; ?>
+
+                                    </td>
+
+                                </tr>
+
+                            <?php endforeach; ?>
+
+                        <?php endif; ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
 
         </div>
 
     </div>
-
-</div>
-
 
 </main>
 
@@ -1192,184 +1042,243 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     aria-hidden="true"
 >
 
+    <div
+        class="absolute inset-0 bg-slate-900/50"
+        onclick="closeCreateUnitModal()"
+    ></div>
 
-<div
-    class="absolute inset-0 bg-slate-900/50"
-    onclick="closeCreateUnitModal()"
-></div>
+    <div class="relative flex min-h-full items-center justify-center p-4">
 
-<div class="relative flex min-h-full items-center justify-center p-4">
+        <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
 
-    <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
 
-        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                <div>
 
-            <div>
+                    <h2 class="text-lg font-bold text-slate-900">
+                        Add Rental Unit
+                    </h2>
 
-                <h2 class="text-lg font-bold text-slate-900">
-                    Add Rental Unit
-                </h2>
+                    <p class="text-sm text-slate-500">
+                        Create a new unit under a property.
+                    </p>
 
-                <p class="text-sm text-slate-500">
-                    Create a new unit under a property.
-                </p>
-
-            </div>
-
-            <button
-                type="button"
-                onclick="closeCreateUnitModal()"
-                class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            >
-
-                <svg
-                    class="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"
-                    />
-                </svg>
-
-            </button>
-
-        </div>
-
-        <form
-            method="POST"
-            action="units.php"
-            class="space-y-5 p-6"
-        >
-
-            <input
-                type="hidden"
-                name="action"
-                value="create_unit"
-            >
-
-            <div>
-
-                <label
-                    for="propertyId"
-                    class="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                    Property
-                </label>
-
-                <input
-                    type="text"
-                    name="propertyId"
-                    id="propertyId"
-                    required
-                    placeholder="Enter property ID"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-
-                <p class="mt-1.5 text-xs text-slate-400">
-                    Enter the property's API ID.
-                </p>
-
-            </div>
-
-            <div>
-
-                <label
-                    for="unitNumber"
-                    class="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                    Unit Number
-                </label>
-
-                <input
-                    type="text"
-                    id="unitNumber"
-                    name="unitNumber"
-                    required
-                    placeholder="e.g. A-101"
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-
-            </div>
-
-            <div>
-
-                <label
-                    for="rent"
-                    class="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                    Monthly Rent
-                </label>
-
-                <input
-                    type="number"
-                    id="rent"
-                    name="rent"
-                    min="0"
-                    step="0.01"
-                    required
-                    placeholder="25000"
-                    class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-
-            </div>
-
-            <div>
-
-                <label
-                    for="status"
-                    class="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                    Status
-                </label>
-
-                <select
-                    id="status"
-                    name="status"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-
-                    <option value="Vacant">
-                        Vacant
-                    </option>
-
-                    <option value="Occupied">
-                        Occupied
-                    </option>
-
-                </select>
-
-            </div>
-
-            <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
+                </div>
 
                 <button
                     type="button"
                     onclick="closeCreateUnitModal()"
-                    class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 >
-                    Cancel
-                </button>
 
-                <button
-                    type="submit"
-                    class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                >
-                    Create Unit
+                    <svg
+                        class="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                        />
+                    </svg>
+
                 </button>
 
             </div>
 
-        </form>
+            <form
+                method="POST"
+                action="units.php"
+                class="space-y-5 p-6"
+            >
+
+                <input
+                    type="hidden"
+                    name="action"
+                    value="create_unit"
+                >
+
+                <!-- PROPERTY DROPDOWN -->
+                <div>
+
+                    <label
+                        for="propertyId"
+                        class="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                        Property
+                    </label>
+
+                    <select
+                        name="propertyId"
+                        id="propertyId"
+                        required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                        <option value="">
+                            Select property
+                        </option>
+
+                        <?php foreach ($properties as $property): ?>
+
+                            <?php
+
+                            $propertyId = (string)(
+                                $property['propertyId']
+                                ?? $property['_id']
+                                ?? $property['id']
+                                ?? ''
+                            );
+
+                            $propertyName = trim(
+                                (string)(
+                                    $property['name']
+                                    ?? $property['propertyName']
+                                    ?? $property['title']
+                                    ?? 'Unnamed Property'
+                                )
+                            );
+
+                            $propertyLocation = trim(
+                                (string)(
+                                    $property['location']
+                                    ?? ''
+                                )
+                            );
+
+                            ?>
+
+                            <?php if ($propertyId !== ''): ?>
+
+                                <option
+                                    value="<?= pp_units_e($propertyId) ?>"
+                                >
+                                    <?= pp_units_e($propertyName) ?>
+
+                                    <?php if ($propertyLocation !== ''): ?>
+
+                                        — <?= pp_units_e($propertyLocation) ?>
+
+                                    <?php endif; ?>
+
+                                </option>
+
+                            <?php endif; ?>
+
+                        <?php endforeach; ?>
+
+                    </select>
+
+                    <?php if (empty($properties)): ?>
+
+                        <p class="mt-1.5 text-xs text-amber-600">
+                            No properties are currently available.
+                        </p>
+
+                    <?php endif; ?>
+
+                </div>
+
+                <!-- UNIT NUMBER -->
+                <div>
+
+                    <label
+                        for="unitNumber"
+                        class="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                        Unit Number
+                    </label>
+
+                    <input
+                        type="text"
+                        id="unitNumber"
+                        name="unitNumber"
+                        required
+                        placeholder="e.g. A-101"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                </div>
+
+                <!-- RENT -->
+                <div>
+
+                    <label
+                        for="rent"
+                        class="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                        Monthly Rent
+                    </label>
+
+                    <input
+                        type="number"
+                        id="rent"
+                        name="rent"
+                        min="0"
+                        step="0.01"
+                        required
+                        placeholder="25000"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                </div>
+
+                <!-- STATUS -->
+                <div>
+
+                    <label
+                        for="status"
+                        class="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                        Status
+                    </label>
+
+                    <select
+                        id="status"
+                        name="status"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                        <option value="Vacant">
+                            Vacant
+                        </option>
+
+                        <option value="Occupied">
+                            Occupied
+                        </option>
+
+                    </select>
+
+                </div>
+
+                <!-- BUTTONS -->
+                <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
+
+                    <button
+                        type="button"
+                        onclick="closeCreateUnitModal()"
+                        class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                    >
+                        Create Unit
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
 
     </div>
-
-</div>
-
 
 </div>
 
@@ -1383,163 +1292,162 @@ require_once __DIR__ . '/../../includes/sidebar.php';
     aria-hidden="true"
 >
 
-```
-<div
-    class="absolute inset-0 bg-slate-900/50"
-    onclick="closeAssignCustomerModal()"
-></div>
+    <div
+        class="absolute inset-0 bg-slate-900/50"
+        onclick="closeAssignCustomerModal()"
+    ></div>
 
-<div class="relative flex min-h-full items-center justify-center p-4">
+    <div class="relative flex min-h-full items-center justify-center p-4">
 
-    <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+        <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
 
-        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
 
-            <div>
+                <div>
 
-                <h2 class="text-lg font-bold text-slate-900">
-                    Assign Customer
-                </h2>
+                    <h2 class="text-lg font-bold text-slate-900">
+                        Assign Customer
+                    </h2>
 
-                <p class="text-sm text-slate-500">
-                    Assign a customer to a vacant unit.
-                </p>
-
-            </div>
-
-            <button
-                type="button"
-                onclick="closeAssignCustomerModal()"
-                class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            >
-
-                <svg
-                    class="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M6 18L18 6M6 6l12 12"
-                    />
-                </svg>
-
-            </button>
-
-        </div>
-
-        <div class="space-y-5 p-6">
-
-            <div>
-
-                <label
-                    for="assignUnitId"
-                    class="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                    Vacant Unit
-                </label>
-
-                <select
-                    id="assignUnitId"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-
-                    <option value="">
-                        Select vacant unit
-                    </option>
-
-                    <?php foreach ($vacantUnitOptions as $unit): ?>
-
-                        <?php
-
-                        $unitId = pp_units_id(
-                            $unit['_id'] ?? ''
-                        );
-
-                        $unitNumber =
-                            pp_units_number($unit);
-
-                        $propertyName =
-                            pp_units_property_name($unit);
-
-                        ?>
-
-                        <?php if ($unitId !== ''): ?>
-
-                            <option value="<?= pp_units_e($unitId) ?>">
-                                <?= pp_units_e($unitNumber) ?>
-                                -
-                                <?= pp_units_e($propertyName) ?>
-                            </option>
-
-                        <?php endif; ?>
-
-                    <?php endforeach; ?>
-
-                </select>
-
-                <?php if (empty($vacantUnitOptions)): ?>
-
-                    <p class="mt-1.5 text-xs text-amber-600">
-                        There are currently no vacant units available.
+                    <p class="text-sm text-slate-500">
+                        Assign a customer to a vacant unit.
                     </p>
 
-                <?php endif; ?>
-
-            </div>
-
-            <div>
-
-                <label
-                    for="customerId"
-                    class="mb-1.5 block text-sm font-semibold text-slate-700"
-                >
-                    Customer ID
-                </label>
-
-                <input
-                    type="text"
-                    id="customerId"
-                    placeholder="Enter customer ID"
-                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-
-                <p class="mt-1.5 text-xs text-slate-400">
-                    Customer assignment can be completed once a valid customer ID is provided.
-                </p>
-
-            </div>
-
-            <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
+                </div>
 
                 <button
                     type="button"
                     onclick="closeAssignCustomerModal()"
-                    class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 >
-                    Cancel
+
+                    <svg
+                        class="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                        />
+                    </svg>
+
                 </button>
 
-                <button
-                    type="button"
-                    onclick="submitAssignCustomer()"
-                    <?= empty($vacantUnitOptions) ? 'disabled' : '' ?>
-                    class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                    Assign Customer
-                </button>
+            </div>
+
+            <div class="space-y-5 p-6">
+
+                <!-- VACANT UNIT -->
+                <div>
+
+                    <label
+                        for="assignUnitId"
+                        class="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                        Vacant Unit
+                    </label>
+
+                    <select
+                        id="assignUnitId"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                        <option value="">
+                            Select vacant unit
+                        </option>
+
+                        <?php foreach ($vacantUnitOptions as $unit): ?>
+
+                            <?php
+
+                            $assignUnitId = pp_units_id(
+                                $unit['_id'] ?? ''
+                            );
+
+                            $assignUnitNumber =
+                                pp_units_number($unit);
+
+                            $assignPropertyName =
+                                pp_units_property_name($unit);
+
+                            ?>
+
+                            <?php if ($assignUnitId !== ''): ?>
+
+                                <option
+                                    value="<?= pp_units_e($assignUnitId) ?>"
+                                >
+                                    <?= pp_units_e($assignUnitNumber) ?>
+                                    -
+                                    <?= pp_units_e($assignPropertyName) ?>
+                                </option>
+
+                            <?php endif; ?>
+
+                        <?php endforeach; ?>
+
+                    </select>
+
+                    <?php if (empty($vacantUnitOptions)): ?>
+
+                        <p class="mt-1.5 text-xs text-amber-600">
+                            There are currently no vacant units available.
+                        </p>
+
+                    <?php endif; ?>
+
+                </div>
+
+                <!-- CUSTOMER ID -->
+                <div>
+
+                    <label
+                        for="customerId"
+                        class="mb-1.5 block text-sm font-semibold text-slate-700"
+                    >
+                        Customer ID
+                    </label>
+
+                    <input
+                        type="text"
+                        id="customerId"
+                        placeholder="Enter customer ID"
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    >
+
+                </div>
+
+                <!-- BUTTONS -->
+                <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
+
+                    <button
+                        type="button"
+                        onclick="closeAssignCustomerModal()"
+                        class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="button"
+                        onclick="submitAssignCustomer()"
+                        <?= empty($vacantUnitOptions) ? 'disabled' : '' ?>
+                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Assign Customer
+                    </button>
+
+                </div>
 
             </div>
 
         </div>
 
     </div>
-
-</div>
-
 
 </div>
 
@@ -1643,7 +1551,7 @@ function closeAssignCustomerModal() {
 
 /*
 |--------------------------------------------------------------------------
-| Search
+| Search Units
 |--------------------------------------------------------------------------
 */
 
@@ -1687,7 +1595,7 @@ function filterUnits() {
 
 /*
 |--------------------------------------------------------------------------
-| Assign customer
+| Assign Customer
 |--------------------------------------------------------------------------
 */
 
@@ -1765,7 +1673,7 @@ function submitAssignCustomer() {
 
 /*
 |--------------------------------------------------------------------------
-| Escape key
+| Escape Key
 |--------------------------------------------------------------------------
 */
 
