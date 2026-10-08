@@ -11,13 +11,9 @@ require_once __DIR__ . '/../../includes/auth.php';
 
 require_admin();
 
-$pageTitle = 'Database';
+require_once __DIR__ . '/_system_guard.php';
 
-/*
-|--------------------------------------------------------------------------
-| Helpers
-|--------------------------------------------------------------------------
-*/
+$pageTitle = 'Database';
 
 function pp_db_e($value): string
 {
@@ -28,9 +24,6 @@ function pp_db_e($value): string
     );
 }
 
-/**
- * Try to count records for an endpoint. Returns null on failure.
- */
 function pp_db_count(string $endpoint, array $keys = ['data']): ?int
 {
     try {
@@ -68,12 +61,6 @@ function pp_db_count(string $endpoint, array $keys = ['data']): ?int
     }
 }
 
-/*
-|--------------------------------------------------------------------------
-| Try dedicated db-stats endpoint first
-|--------------------------------------------------------------------------
-*/
-
 $dbStats = null;
 $dbStatsError = null;
 
@@ -98,12 +85,6 @@ try {
     $dbStatsError = $e->getMessage();
 }
 
-/*
-|--------------------------------------------------------------------------
-| Fallback: estimate from existing endpoints
-|--------------------------------------------------------------------------
-*/
-
 $estimatedCounts = [
     'Properties'        => pp_db_count('/properties'),
     'Units'             => pp_db_count('/units'),
@@ -125,6 +106,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 
     <div class="px-4 py-6 sm:px-6 lg:px-8">
 
+        <!-- Breadcrumb -->
+        <nav class="mb-4 flex items-center gap-2 text-sm text-slate-500">
+            <a href="system.php" class="hover:text-indigo-600">
+                System
+            </a>
+            <span>/</span>
+            <span class="font-medium text-slate-700">Database</span>
+        </nav>
+
         <!-- Header -->
 
         <div class="mb-6">
@@ -138,8 +128,6 @@ require_once __DIR__ . '/../../includes/sidebar.php';
             </p>
 
         </div>
-
-        <!-- Fallback warning -->
 
         <?php if ($dbStats === null): ?>
 
@@ -191,6 +179,18 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                     <span class="text-sm text-slate-500">
                         <?= pp_db_e($dbStats['db'] ?? $dbStats['database'] ?? 'MongoDB') ?>
                     </span>
+
+                    <?php if (!empty($dbStats['pingMs'])): ?>
+                        <span class="text-xs text-slate-400">
+                            · ping <?= (int)$dbStats['pingMs'] ?> ms
+                        </span>
+                    <?php endif; ?>
+
+                    <?php if (!empty($dbStats['serverVersion'])): ?>
+                        <span class="text-xs text-slate-400">
+                            · v<?= pp_db_e($dbStats['serverVersion']) ?>
+                        </span>
+                    <?php endif; ?>
                 <?php endif; ?>
 
             </div>
@@ -234,7 +234,7 @@ require_once __DIR__ . '/../../includes/sidebar.php';
                                     <?= pp_db_e($name) ?>
                                 </td>
                                 <td class="px-5 py-4 text-right text-sm font-semibold text-slate-800">
-                                    <?= number_format((int)$count) ?>
+                                    <?= $count === null ? '—' : number_format((int)$count) ?>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

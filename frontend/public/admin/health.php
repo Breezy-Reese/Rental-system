@@ -11,13 +11,9 @@ require_once __DIR__ . '/../../includes/auth.php';
 
 require_admin();
 
-$pageTitle = 'System Health';
+require_once __DIR__ . '/_system_guard.php';
 
-/*
-|--------------------------------------------------------------------------
-| Helpers
-|--------------------------------------------------------------------------
-*/
+$pageTitle = 'System Health';
 
 function pp_health_e($value): string
 {
@@ -28,11 +24,6 @@ function pp_health_e($value): string
     );
 }
 
-/**
- * Time an API GET request.
- *
- * @return array{ok:bool, latency_ms:int, status:int, error:?string}
- */
 function pp_health_ping(string $endpoint): array
 {
     $start = microtime(true);
@@ -70,12 +61,6 @@ function pp_health_ping(string $endpoint): array
     }
 }
 
-/*
-|--------------------------------------------------------------------------
-| Run checks
-|--------------------------------------------------------------------------
-*/
-
 $checks = [
     'API /properties' => pp_health_ping('/properties'),
     'API /units'      => pp_health_ping('/units'),
@@ -108,6 +93,15 @@ require_once __DIR__ . '/../../includes/sidebar.php';
 <main class="min-h-screen bg-slate-50 lg:ml-64">
 
     <div class="px-4 py-6 sm:px-6 lg:px-8">
+
+        <!-- Breadcrumb -->
+        <nav class="mb-4 flex items-center gap-2 text-sm text-slate-500">
+            <a href="system.php" class="hover:text-indigo-600">
+                System
+            </a>
+            <span>/</span>
+            <span class="font-medium text-slate-700">Health</span>
+        </nav>
 
         <!-- Header -->
 

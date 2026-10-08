@@ -1,4 +1,3 @@
-
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
@@ -16,6 +15,9 @@ const normalizeEmail = (email) => {
 
 /**
  * Create JWT token.
+ *
+ * The JWT payload MUST include `phone` so downstream routes
+ * (e.g. /api/system/send-otp) can deliver OTPs by SMS.
  */
 const createToken = (user) => {
   const secret = process.env.JWT_SECRET;
@@ -26,10 +28,11 @@ const createToken = (user) => {
 
   return jwt.sign(
     {
-      id: user._id.toString(),
-      name: user.name,
+      id:    user._id.toString(),
+      name:  user.name,
       email: user.email,
-      role: user.role,
+      phone: user.phone || "",
+      role:  user.role,
     },
     secret,
     {
@@ -42,11 +45,11 @@ const createToken = (user) => {
  * Format user data returned to the frontend.
  */
 const formatUser = (user) => ({
-  id: user._id.toString(),
-  name: user.name,
-  email: user.email,
-  phone: user.phone || "",
-  role: user.role,
+  id:     user._id.toString(),
+  name:   user.name,
+  email:  user.email,
+  phone:  user.phone || "",
+  role:   user.role,
   status: user.status,
 });
 
@@ -55,7 +58,7 @@ const formatUser = (user) => ({
  */
 const login = async (req, res) => {
   try {
-    const email = normalizeEmail(req.body?.email);
+    const email    = normalizeEmail(req.body?.email);
     const password = req.body?.password;
 
     if (!email || typeof password !== "string" || !password) {
@@ -65,10 +68,7 @@ const login = async (req, res) => {
       });
     }
 
-    // Find user by normalized email.
-    const user = await User.findOne({
-      email,
-    });
+    const user = await User.findOne({ email });
 
     if (!user) {
       return res.status(401).json({
@@ -77,7 +77,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Reject inactive accounts.
     if (user.status && user.status !== "Active") {
       return res.status(403).json({
         success: false,
@@ -86,7 +85,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Verify password.
     if (!user.password) {
       console.error("Login failed: user has no stored password hash.");
 
@@ -96,10 +94,7 @@ const login = async (req, res) => {
       });
     }
 
-    const passwordMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
       return res.status(401).json({
@@ -108,11 +103,9 @@ const login = async (req, res) => {
       });
     }
 
-    // Create authentication token.
-    const token = createToken(user);
+    const token         = createToken(user);
     const formattedUser = formatUser(user);
 
-    // Redirect based on the stored database role.
     let redirect = "/customer/dashboard.php";
 
     if (user.role === "Administrator") {
@@ -131,7 +124,6 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    // Log the real error in Render, not sensitive credentials.
     console.error("Login error:", error.message);
 
     return res.status(500).json({
@@ -143,9 +135,6 @@ const login = async (req, res) => {
 
 /**
  * PUBLIC REGISTRATION
- *
- * All public registrations are Customers.
- * Never accept a role from the submitted form.
  */
 const register = async (req, res) => {
   try {
@@ -161,7 +150,7 @@ const register = async (req, res) => {
         ? req.body.phone.trim()
         : "";
 
-    const password = req.body?.password;
+    const password        = req.body?.password;
     const confirmPassword = req.body?.confirmPassword;
 
     if (
@@ -193,10 +182,7 @@ const register = async (req, res) => {
       });
     }
 
-    // Check for an existing account.
-    const existingUser = await User.findOne({
-      email,
-    });
+    const existingUser = await User.findOne({ email });
 
     if (existingUser) {
       return res.status(409).json({
@@ -205,10 +191,8 @@ const register = async (req, res) => {
       });
     }
 
-    // Hash password before storing it.
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Public registration always creates a Customer.
     const user = await User.create({
       name,
       email,
@@ -218,7 +202,7 @@ const register = async (req, res) => {
       status: "Active",
     });
 
-    const token = createToken(user);
+    const token         = createToken(user);
     const formattedUser = formatUser(user);
 
     console.log(`New customer registered: ${user.email}`);
@@ -251,8 +235,6 @@ const register = async (req, res) => {
 
 /**
  * LOGOUT
- *
- * The PHP frontend clears the local session and token.
  */
 const logout = async (req, res) => {
   return res.status(200).json({
@@ -266,9 +248,7 @@ const logout = async (req, res) => {
  */
 const me = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select(
-      "-password"
-    );
+    const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
       return res.status(404).json({
