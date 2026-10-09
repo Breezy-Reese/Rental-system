@@ -1,8 +1,8 @@
-<?php
 
+<?php
 /**
  * ============================================================
- * PropertyPro - Admin Units
+ * PropertyPro - Admin Units & Customer Assignments
  * ============================================================
  */
 
@@ -15,7 +15,7 @@ $pageTitle = 'Units';
 
 /*
 |--------------------------------------------------------------------------
-| Helpers
+| HELPERS
 |--------------------------------------------------------------------------
 */
 
@@ -30,283 +30,280 @@ function pp_units_e($value): string
 
 function pp_units_money($value): string
 {
-    return 'KES ' . number_format(
-        (float)($value ?? 0),
-        2
-    );
+    return 'KES ' . number_format((float)($value ?? 0), 2);
 }
 
-/**
- * Treat an API response as successful if:
- *  - HTTP status is 2xx, AND
- *  - if the API explicitly includes a `success` key, it must be truthy.
- */
-function pp_api_ok(array $response): bool
+function pp_units_ok(array $response): bool
 {
-    $status = (int)($response['status'] ?? 0);
-    $httpOk = $status >= 200 && $status < 300;
+    $status = (int)($response['status'] ?? 200);
 
-    if (array_key_exists('success', $response)) {
-        return $httpOk && (bool)$response['success'];
-    }
-
-    return $httpOk;
+    return $status >= 200
+        && $status < 300
+        && (!array_key_exists('success', $response) || $response['success']);
 }
 
-/**
- * Extract a human-readable error message from an API response.
- */
-function pp_api_error(array $response, string $fallback = 'Request failed.'): string
+function pp_units_error(array $response, string $fallback): string
 {
     foreach (['message', 'error', 'detail', 'msg'] as $key) {
-        if (!empty($response[$key]) && is_string($response[$key])) {
+        if (isset($response[$key]) && is_string($response[$key]) && trim($response[$key]) !== '') {
             return $response[$key];
         }
     }
 
-    $status = (int)($response['status'] ?? 0);
-
-    return $status > 0
-        ? $fallback . ' (HTTP ' . $status . ')'
-        : $fallback;
+    return $fallback;
 }
 
-/**
- * Extract a list payload from various possible response shapes.
- */
-function pp_api_list(array $response, array $keys = ['data']): array
+function pp_units_list(array $response, array $keys = ['data']): array
 {
     foreach ($keys as $key) {
-        if (isset($response[$key]) && is_array($response[$key])) {
-            return array_values(
-                array_filter(
-                    $response[$key],
-                    static fn($row): bool => is_array($row)
-                )
-            );
+        if (!isset($response[$key]) || !is_array($response[$key])) {
+            continue;
+        }
+
+        $value = $response[$key];
+
+        if (!array_is_list($value)) {
+            foreach (['data', 'units', 'properties', 'customers', 'users', 'tenants', 'leases'] as $nested) {
+                if (isset($value[$nested]) && is_array($value[$nested])) {
+                    $value = $value[$nested];
+                    break;
+                }
+            }
+        }
+
+        if (array_is_list($value)) {
+            return array_values(array_filter($value, 'is_array'));
         }
     }
 
-    $isList = array_keys($response) === range(0, count($response) - 1);
-
-    if ($isList) {
-        return array_values(
-            array_filter(
-                $response,
-                static fn($row): bool => is_array($row)
-            )
-        );
-    }
-
-    return [];
+    return array_is_list($response)
+        ? array_values(array_filter($response, 'is_array'))
+        : [];
 }
 
-/**
- * Pick the correct ID to send to the backend.
- *
- * The backend uses MongoDB and casts IDs to ObjectId. Only `_id` (or `id`)
- * will satisfy that cast. Never send `propertyId` (a human code like
- * "PROP-003") as a value — it causes:
- *   CastError: Cast to ObjectId failed for value "PROP-003" at path "_id"
- */
-function pp_backend_id(array $row, array $keys = ['_id', 'id']): string
+function pp_units_id(array $row, array $keys = ['_id', 'id']): string
 {
     foreach ($keys as $key) {
-        if (!empty($row[$key]) && is_string($row[$key])) {
-            return $row[$key];
+        if (isset($row[$key]) && (is_string($row[$key]) || is_numeric($row[$key]))) {
+            $value = trim((string)$row[$key]);
+
+            if ($value !== '') {
+                return $value;
+            }
         }
     }
 
     return '';
 }
 
-/*
-|--------------------------------------------------------------------------
-| Load Units
-|--------------------------------------------------------------------------
-*/
-
-$units = [];
-
-try {
-    $unitsResponse = api_get('/units');
-
-    if (is_array($unitsResponse)) {
-        $units = pp_api_list($unitsResponse, ['data', 'units']);
-    }
-
-    if (!pp_api_ok($unitsResponse)) {
-        error_log(
-            'PropertyPro Units API load failed: ' .
-            json_encode($unitsResponse)
-        );
-    }
-} catch (Throwable $e) {
-    error_log(
-        'PropertyPro Units API Error: ' . $e->getMessage()
-    );
-}
-
-/*
-|--------------------------------------------------------------------------
-| Load Properties
-|--------------------------------------------------------------------------
-*/
-
-$properties = [];
-
-try {
-    $propertiesResponse = api_get('/properties');
-
-    if (is_array($propertiesResponse)) {
-        $properties = pp_api_list($propertiesResponse, ['data', 'properties']);
-    }
-
-    if (!pp_api_ok($propertiesResponse)) {
-        error_log(
-            'PropertyPro Properties API load failed: ' .
-            json_encode($propertiesResponse)
-        );
-    }
-} catch (Throwable $e) {
-    error_log(
-        'PropertyPro Properties API Error: ' . $e->getMessage()
-    );
-}
-
-/*
-|--------------------------------------------------------------------------
-| Helper Functions For Unit Data
-|--------------------------------------------------------------------------
-*/
-
-function pp_unit_id(array $unit): string
+function pp_units_ref_id($value): string
 {
-    return pp_backend_id($unit, ['_id', 'id', 'unitId']);
-}
-
-function pp_unit_number(array $unit): string
-{
-    return trim(
-        (string)(
-            $unit['unitNumber']
-            ?? $unit['number']
-            ?? 'N/A'
-        )
-    );
-}
-
-function pp_unit_property(array $unit): string
-{
-    $property = $unit['propertyId'] ?? null;
-
-    if (is_array($property)) {
-        return trim(
-            (string)(
-                $property['name']
-                ?? $property['propertyName']
-                ?? $property['title']
-                ?? 'Unknown Property'
-            )
-        );
+    if (is_array($value)) {
+        return pp_units_id($value, ['_id', 'id', 'userId', 'tenantId', 'unitId']);
     }
 
-    return trim(
-        (string)(
-            $unit['propertyName']
-            ?? 'Unknown Property'
-        )
-    );
+    return is_string($value) || is_numeric($value)
+        ? trim((string)$value)
+        : '';
 }
 
-function pp_unit_location(array $unit): string
+function pp_units_customer_id(array $customer): string
 {
-    $property = $unit['propertyId'] ?? null;
-
-    if (is_array($property)) {
-        return trim((string)($property['location'] ?? ''));
-    }
-
-    return trim((string)($unit['location'] ?? ''));
+    // /admin/customers should return User documents.
+    return pp_units_id($customer, ['_id', 'id']);
 }
 
-function pp_unit_tenant(array $unit): string
+function pp_units_customer_name(array $customer): string
 {
-    $tenant = $unit['tenantId'] ?? null;
-
-    if (is_array($tenant)) {
-        $name = trim(
-            (string)(
-                $tenant['name']
-                ?? $tenant['fullName']
-                ?? ''
-            )
-        );
-
-        if ($name !== '') {
-            return $name;
-        }
-
-        $fullName = trim(
-            (string)($tenant['firstName'] ?? '') .
-            ' ' .
-            (string)($tenant['lastName'] ?? '')
-        );
-
-        if ($fullName !== '') {
-            return $fullName;
+    foreach (['name', 'fullName', 'username'] as $key) {
+        if (isset($customer[$key]) && trim((string)$customer[$key]) !== '') {
+            return trim((string)$customer[$key]);
         }
     }
 
-    return trim(
-        (string)(
-            $unit['tenantName']
-            ?? 'Vacant'
-        )
+    $name = trim(
+        (string)($customer['firstName'] ?? '') . ' ' .
+        (string)($customer['lastName'] ?? '')
     );
+
+    if ($name !== '') {
+        return $name;
+    }
+
+    foreach (['userId', 'user', 'customer'] as $key) {
+        if (isset($customer[$key]) && is_array($customer[$key])) {
+            $nested = pp_units_customer_name($customer[$key]);
+
+            if ($nested !== 'Unnamed Customer') {
+                return $nested;
+            }
+        }
+    }
+
+    return trim((string)($customer['email'] ?? 'Unnamed Customer'));
 }
 
-function pp_unit_status(array $unit): string
+function pp_units_customer_email(array $customer): string
 {
-    $status = strtolower(
-        trim(
-            (string)(
-                $unit['status']
-                ?? $unit['unitStatus']
-                ?? 'Vacant'
-            )
-        )
-    );
+    if (!empty($customer['email'])) {
+        return trim((string)$customer['email']);
+    }
+
+    foreach (['userId', 'user'] as $key) {
+        if (isset($customer[$key]) && is_array($customer[$key])) {
+            return trim((string)($customer[$key]['email'] ?? ''));
+        }
+    }
+
+    return '';
+}
+
+function pp_units_property_id(array $unit): string
+{
+    return pp_units_ref_id($unit['propertyId'] ?? $unit['property'] ?? '');
+}
+
+function pp_units_property_name(array $row): string
+{
+    $property = $row['propertyId'] ?? $row['property'] ?? null;
+
+    if (is_array($property)) {
+        return trim((string)(
+            $property['name'] ??
+            $property['propertyName'] ??
+            $property['title'] ??
+            'Unknown Property'
+        ));
+    }
+
+    return trim((string)($row['propertyName'] ?? 'Unknown Property'));
+}
+
+function pp_units_unit_number(array $unit): string
+{
+    return trim((string)(
+        $unit['unitNumber'] ??
+        $unit['number'] ??
+        'N/A'
+    ));
+}
+
+function pp_units_rent(array $unit): float
+{
+    return (float)($unit['rent'] ?? $unit['monthlyRent'] ?? 0);
+}
+
+function pp_units_status(array $unit): string
+{
+    $status = strtolower(trim((string)(
+        $unit['status'] ??
+        $unit['unitStatus'] ??
+        'Vacant'
+    )));
 
     if (in_array($status, ['occupied', 'rented', 'leased'], true)) {
         return 'Occupied';
     }
 
+    if (in_array($status, ['maintenance', 'under maintenance', 'repair'], true)) {
+        return 'Maintenance';
+    }
+
     return 'Vacant';
 }
 
-function pp_unit_rent(array $unit): float
+function pp_units_date($value): string
 {
-    return (float)(
-        $unit['rent']
-        ?? $unit['monthlyRent']
-        ?? 0
-    );
+    if (!$value) {
+        return '—';
+    }
+
+    try {
+        return (new DateTimeImmutable((string)$value))->format('d M Y');
+    } catch (Throwable $e) {
+        return '—';
+    }
+}
+
+function pp_units_lease_active(array $lease): bool
+{
+    $status = strtolower(trim((string)($lease['status'] ?? '')));
+
+    return in_array($status, ['active'], true);
+}
+
+function pp_units_flash(string $message, string $type = 'error'): void
+{
+    $_SESSION['units_flash_message'] = $message;
+    $_SESSION['units_flash_type'] = $type;
+}
+
+function pp_units_status_badge(string $status): string
+{
+    if ($status === 'Occupied') {
+        return 'bg-emerald-50 text-emerald-700';
+    }
+
+    if ($status === 'Maintenance') {
+        return 'bg-rose-50 text-rose-700';
+    }
+
+    return 'bg-amber-50 text-amber-700';
 }
 
 /*
 |--------------------------------------------------------------------------
-| Flash Messages
+| LOAD API DATA
 |--------------------------------------------------------------------------
 */
 
-$flashMessage = $_SESSION['units_flash_message'] ?? '';
-$flashType    = $_SESSION['units_flash_type'] ?? '';
+$units = [];
+$properties = [];
+$customers = [];
+$tenants = [];
+$leases = [];
 
-unset(
-    $_SESSION['units_flash_message'],
-    $_SESSION['units_flash_type']
-);
+$apiErrors = [];
+
+$endpoints = [
+    'units' => ['/units', ['data', 'units']],
+    'properties' => ['/properties', ['data', 'properties']],
+    'customers' => ['/admin/customers', ['data', 'customers', 'users']],
+    'tenants' => ['/tenants', ['data', 'tenants']],
+    'leases' => ['/leases', ['data', 'leases']],
+];
+
+foreach ($endpoints as $name => [$endpoint, $keys]) {
+    try {
+        $response = api_get($endpoint);
+
+        if (!is_array($response) || !pp_units_ok($response)) {
+            $apiErrors[$name] = is_array($response)
+                ? pp_units_error($response, "Could not load {$name}.")
+                : "Could not load {$name}.";
+
+            error_log("PropertyPro {$name} API: " . json_encode($response));
+            continue;
+        }
+
+        $data = pp_units_list($response, $keys);
+
+        if ($name === 'units') {
+            $units = $data;
+        } elseif ($name === 'properties') {
+            $properties = $data;
+        } elseif ($name === 'customers') {
+            $customers = $data;
+        } elseif ($name === 'tenants') {
+            $tenants = $data;
+        } elseif ($name === 'leases') {
+            $leases = $data;
+        }
+    } catch (Throwable $e) {
+        $apiErrors[$name] = "Could not load {$name}.";
+        error_log("PropertyPro {$name} API error: " . $e->getMessage());
+    }
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -314,78 +311,66 @@ unset(
 |--------------------------------------------------------------------------
 */
 
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    ($_POST['action'] ?? '') === 'create_unit'
-) {
-
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_unit') {
     $propertyId = trim((string)($_POST['propertyId'] ?? ''));
     $unitNumber = trim((string)($_POST['unitNumber'] ?? ''));
-    $rent       = trim((string)($_POST['rent'] ?? ''));
-    $status     = trim((string)($_POST['status'] ?? 'Vacant'));
+    $rentInput = trim((string)($_POST['rent'] ?? ''));
 
-    if ($propertyId === '' || $unitNumber === '' || $rent === '') {
-        $_SESSION['units_flash_message'] =
-            'Property, Unit number and rent are required.';
-        $_SESSION['units_flash_type'] = 'error';
-
+    if (
+        $propertyId === '' ||
+        $unitNumber === '' ||
+        $rentInput === '' ||
+        !is_numeric($rentInput) ||
+        (float)$rentInput < 0
+    ) {
+        pp_units_flash('Select a property and enter a valid unit number and rent.');
         header('Location: units.php');
         exit;
     }
 
-    /*
-    |----------------------------------------------------------------------
-    | AUTOMATIC UNIT ID (client-side generation)
-    |----------------------------------------------------------------------
-    | If your backend rejects client-sent `unitId`, remove that field
-    | from the payload below.
-    */
+    $propertyExists = false;
 
-    try {
-        $unitId =
-            'UNIT-' .
-            date('YmdHis') .
-            '-' .
-            strtoupper(bin2hex(random_bytes(3)));
-    } catch (Throwable $e) {
-        $unitId =
-            'UNIT-' .
-            date('YmdHis') .
-            '-' .
-            strtoupper(substr(uniqid(), -6));
+    foreach ($properties as $property) {
+        if (pp_units_id($property) === $propertyId) {
+            $propertyExists = true;
+            break;
+        }
     }
 
-    $payload = [
-        'unitId'     => $unitId,
-        'propertyId' => $propertyId,
-        'unitNumber' => $unitNumber,
-        'rent'       => (float)$rent,
-        'status'     => $status,
-    ];
+    if (!$propertyExists) {
+        pp_units_flash('The selected property could not be found.');
+        header('Location: units.php');
+        exit;
+    }
 
     try {
-        $response = api_post('/units', $payload);
+        $unitCode = 'UNIT-' . date('YmdHis') . '-' . strtoupper(bin2hex(random_bytes(3)));
+    } catch (Throwable $e) {
+        $unitCode = 'UNIT-' . date('YmdHis') . '-' . strtoupper(substr(uniqid(), -6));
+    }
 
-        error_log('CREATE UNIT payload: ' . json_encode($payload));
-        error_log('CREATE UNIT response: ' . json_encode($response));
+    try {
+        $response = api_post('/units', [
+            'unitId' => $unitCode,
+            'propertyId' => $propertyId,
+            'unitNumber' => $unitNumber,
+            'rent' => (float)$rentInput,
+            'status' => 'Vacant',
+        ]);
 
-        if (pp_api_ok($response)) {
-            $_SESSION['units_flash_message'] =
-                'Unit created successfully.';
-            $_SESSION['units_flash_type'] = 'success';
+        if (is_array($response) && pp_units_ok($response)) {
+            pp_units_flash('Unit created successfully.', 'success');
         } else {
-            $_SESSION['units_flash_message'] =
-                pp_api_error($response, 'Unable to create unit.');
-            $_SESSION['units_flash_type'] = 'error';
+            pp_units_flash(
+                pp_units_error(
+                    is_array($response) ? $response : [],
+                    'Unable to create unit.'
+                )
+            );
         }
     } catch (Throwable $e) {
-        error_log(
-            'PropertyPro Create Unit Error: ' . $e->getMessage()
-        );
-
-        $_SESSION['units_flash_message'] =
-            'Unable to create unit. Please try again.';
-        $_SESSION['units_flash_type'] = 'error';
+        error_log('Create unit error: ' . $e->getMessage());
+        pp_units_flash('Unable to create unit. Please try again.');
     }
 
     header('Location: units.php');
@@ -398,55 +383,115 @@ if (
 |--------------------------------------------------------------------------
 */
 
-if (
-    $_SERVER['REQUEST_METHOD'] === 'POST' &&
-    ($_POST['action'] ?? '') === 'assign_customer'
-) {
-
-    $unitId     = trim((string)($_POST['unitId'] ?? ''));
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assign_customer') {
     $customerId = trim((string)($_POST['customerId'] ?? ''));
+    $propertyId = trim((string)($_POST['propertyId'] ?? ''));
+    $unitId = trim((string)($_POST['unitId'] ?? ''));
+    $startDate = trim((string)($_POST['startDate'] ?? ''));
+    $endDate = trim((string)($_POST['endDate'] ?? ''));
 
-    if ($unitId === '' || $customerId === '') {
-        $_SESSION['units_flash_message'] =
-            'Unit and Customer ID are required.';
-        $_SESSION['units_flash_type'] = 'error';
-
+    if (!$customerId || !$propertyId || !$unitId || !$startDate || !$endDate) {
+        pp_units_flash('Customer, property, unit, start date and end date are required.');
         header('Location: units.php');
         exit;
     }
 
+    $start = DateTimeImmutable::createFromFormat('!Y-m-d', $startDate);
+    $end = DateTimeImmutable::createFromFormat('!Y-m-d', $endDate);
+    $startErrors = DateTimeImmutable::getLastErrors();
+    $endErrors = DateTimeImmutable::getLastErrors();
+
+    $validStart = $start !== false &&
+        ($startErrors === false || (
+            $startErrors['warning_count'] === 0 &&
+            $startErrors['error_count'] === 0
+        )) &&
+        $start->format('Y-m-d') === $startDate;
+
+    $validEnd = $end !== false &&
+        ($endErrors === false || (
+            $endErrors['warning_count'] === 0 &&
+            $endErrors['error_count'] === 0
+        )) &&
+        $end->format('Y-m-d') === $endDate;
+
+    if (!$validStart || !$validEnd || $end <= $start) {
+        pp_units_flash('Enter valid lease dates. The end date must be after the start date.');
+        header('Location: units.php');
+        exit;
+    }
+
+    $selectedUnit = null;
+
+    foreach ($units as $unit) {
+        if (pp_units_id($unit, ['_id', 'id', 'unitId']) === $unitId) {
+            $selectedUnit = $unit;
+            break;
+        }
+    }
+
+    if (!$selectedUnit) {
+        pp_units_flash('The selected unit could not be found. Refresh the page and try again.');
+        header('Location: units.php');
+        exit;
+    }
+
+    if (pp_units_property_id($selectedUnit) !== $propertyId) {
+        pp_units_flash('The selected unit does not belong to the selected property.');
+        header('Location: units.php');
+        exit;
+    }
+
+    if (pp_units_status($selectedUnit) !== 'Vacant') {
+        pp_units_flash('Only vacant units can be assigned.');
+        header('Location: units.php');
+        exit;
+    }
+
+    $selectedCustomer = null;
+
+    foreach ($customers as $customer) {
+        if (pp_units_customer_id($customer) === $customerId) {
+            $selectedCustomer = $customer;
+            break;
+        }
+    }
+
+    if (!$selectedCustomer) {
+        pp_units_flash('The selected customer could not be found. Refresh the page and try again.');
+        header('Location: units.php');
+        exit;
+    }
+
+    /*
+     * Send both accepted customer ID field names for compatibility.
+     * The value must be the MongoDB User document ID.
+     */
     try {
-        $response = api_post(
-            '/leases/assign-customer',
-            [
-                'unitId'     => $unitId,
-                'customerId' => $customerId,
-            ]
-        );
-
-        error_log('ASSIGN CUSTOMER payload: ' . json_encode([
-            'unitId'     => $unitId,
+        $response = api_post('/leases/assign-customer', [
+            'userId' => $customerId,
             'customerId' => $customerId,
-        ]));
-        error_log('ASSIGN CUSTOMER response: ' . json_encode($response));
+            'propertyId' => $propertyId,
+            'unitId' => $unitId,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+        ]);
 
-        if (pp_api_ok($response)) {
-            $_SESSION['units_flash_message'] =
-                'Customer assigned successfully.';
-            $_SESSION['units_flash_type'] = 'success';
+        error_log('PropertyPro assignment response: ' . json_encode($response));
+
+        if (is_array($response) && pp_units_ok($response)) {
+            pp_units_flash('Customer assigned to the unit successfully.', 'success');
         } else {
-            $_SESSION['units_flash_message'] =
-                pp_api_error($response, 'Unable to assign customer.');
-            $_SESSION['units_flash_type'] = 'error';
+            pp_units_flash(
+                pp_units_error(
+                    is_array($response) ? $response : [],
+                    'Unable to assign customer.'
+                )
+            );
         }
     } catch (Throwable $e) {
-        error_log(
-            'PropertyPro Assign Customer Error: ' . $e->getMessage()
-        );
-
-        $_SESSION['units_flash_message'] =
-            'Unable to assign customer.';
-        $_SESSION['units_flash_type'] = 'error';
+        error_log('Assign customer error: ' . $e->getMessage());
+        pp_units_flash('Unable to assign customer. Please try again.');
     }
 
     header('Location: units.php');
@@ -455,654 +500,1020 @@ if (
 
 /*
 |--------------------------------------------------------------------------
-| Statistics
+| BUILD LOOKUP MAPS
+|--------------------------------------------------------------------------
+|
+| User -> Tenant -> Lease -> Unit/Property.
+| Active lease records are the primary source for assignment status.
+|
+*/
+
+$tenantById = [];
+$tenantByUserId = [];
+$activeLeaseByTenantId = [];
+$activeLeaseByUserId = [];
+$activeLeaseByUnitId = [];
+$unitById = [];
+$propertyById = [];
+
+foreach ($properties as $property) {
+    $id = pp_units_id($property);
+
+    if ($id !== '') {
+        $propertyById[$id] = $property;
+    }
+}
+
+foreach ($units as $unit) {
+    $id = pp_units_id($unit, ['_id', 'id', 'unitId']);
+
+    if ($id !== '') {
+        $unitById[$id] = $unit;
+    }
+}
+
+foreach ($tenants as $tenant) {
+    $tenantId = pp_units_id($tenant, ['_id', 'id']);
+    $userId = pp_units_ref_id($tenant['userId'] ?? $tenant['user'] ?? '');
+
+    if ($tenantId !== '') {
+        $tenantById[$tenantId] = $tenant;
+    }
+
+    if ($userId !== '') {
+        $tenantByUserId[$userId] = $tenant;
+    }
+}
+
+foreach ($leases as $lease) {
+    if (!pp_units_lease_active($lease)) {
+        continue;
+    }
+
+    $tenantId = pp_units_ref_id($lease['tenantId'] ?? '');
+    $unitId = pp_units_ref_id($lease['unitId'] ?? '');
+    $tenant = is_array($lease['tenantId'] ?? null)
+        ? $lease['tenantId']
+        : ($tenantById[$tenantId] ?? []);
+    $userId = pp_units_ref_id($tenant['userId'] ?? $tenant['user'] ?? '');
+
+    if ($tenantId !== '') {
+        $activeLeaseByTenantId[$tenantId] = $lease;
+    }
+
+    if ($userId !== '') {
+        $activeLeaseByUserId[$userId] = $lease;
+    }
+
+    if ($unitId !== '') {
+        $activeLeaseByUnitId[$unitId] = $lease;
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| CLASSIFY CUSTOMERS
 |--------------------------------------------------------------------------
 */
 
-$totalUnits    = count($units);
-$occupiedUnits = 0;
-$vacantUnits   = 0;
-$totalRent     = 0;
+$assignedCustomers = [];
+$unassignedCustomers = [];
+$customerAssignmentByUserId = [];
 
-foreach ($units as $unit) {
-    if (pp_unit_status($unit) === 'Occupied') {
-        $occupiedUnits++;
+foreach ($customers as $customer) {
+    $userId = pp_units_customer_id($customer);
+    $tenant = $tenantByUserId[$userId] ?? [];
+    $tenantId = pp_units_id($tenant, ['_id', 'id']);
+    $lease = $activeLeaseByUserId[$userId]
+        ?? ($tenantId !== '' ? ($activeLeaseByTenantId[$tenantId] ?? null) : null);
+
+    $tenantHasAssignment = !empty($tenant['unitId']) || !empty($tenant['propertyId']);
+
+    $isAssigned = $lease !== null || $tenantHasAssignment;
+
+    /*
+     * A tenant's assignment may be present without a populated lease.
+     * Use its linked unit/property as a fallback.
+     */
+    $unitId = $lease
+        ? pp_units_ref_id($lease['unitId'] ?? '')
+        : pp_units_ref_id($tenant['unitId'] ?? '');
+
+    $propertyId = $lease
+        ? pp_units_ref_id($lease['propertyId'] ?? '')
+        : pp_units_ref_id($tenant['propertyId'] ?? '');
+
+    $unit = $unitId !== '' ? ($unitById[$unitId] ?? []) : [];
+    $property = $propertyId !== '' ? ($propertyById[$propertyId] ?? []) : [];
+
+    if ($lease && is_array($lease['unitId'] ?? null)) {
+        $unit = $lease['unitId'];
+        $unitId = pp_units_ref_id($unit);
+    }
+
+    if ($lease && is_array($lease['propertyId'] ?? null)) {
+        $property = $lease['propertyId'];
+        $propertyId = pp_units_ref_id($property);
+    }
+
+    if (!$property && $unit) {
+        $propertyId = pp_units_property_id($unit);
+        $property = $propertyById[$propertyId] ?? [];
+    }
+
+    /*
+     * Do not mark a customer as assigned solely because a stale tenant
+     * record exists with an empty or invalid unit reference.
+     */
+    if ($isAssigned && $unitId === '') {
+        $isAssigned = false;
+    }
+
+    $record = [
+        'customer' => $customer,
+        'userId' => $userId,
+        'tenant' => $tenant,
+        'tenantId' => $tenantId,
+        'lease' => $lease,
+        'unit' => $unit,
+        'unitId' => $unitId,
+        'property' => $property,
+        'propertyId' => $propertyId,
+    ];
+
+    if ($userId !== '') {
+        $customerAssignmentByUserId[$userId] = $record;
+    }
+
+    if ($isAssigned) {
+        $assignedCustomers[] = $record;
     } else {
-        $vacantUnits++;
+        $unassignedCustomers[] = $record;
     }
-
-    $totalRent += pp_unit_rent($unit);
 }
-
-$occupancyRate =
-    $totalUnits > 0
-        ? round(($occupiedUnits / $totalUnits) * 100)
-        : 0;
 
 /*
 |--------------------------------------------------------------------------
-| Vacant Units
+| BUILD UNIT ASSIGNMENT DETAILS
 |--------------------------------------------------------------------------
 */
 
-$vacantUnitsList = [];
+$occupiedUnits = [];
+$vacantUnits = [];
+$maintenanceUnits = [];
+$totalRent = 0.0;
 
 foreach ($units as $unit) {
-    if (pp_unit_status($unit) === 'Vacant') {
-        $vacantUnitsList[] = $unit;
+    $unitId = pp_units_id($unit, ['_id', 'id', 'unitId']);
+    $status = pp_units_status($unit);
+    $totalRent += pp_units_rent($unit);
+
+    $lease = $activeLeaseByUnitId[$unitId] ?? null;
+    $tenantRef = pp_units_ref_id($unit['tenantId'] ?? $unit['customerId'] ?? '');
+    $tenant = [];
+
+    if (is_array($unit['tenantId'] ?? null)) {
+        $tenant = $unit['tenantId'];
+    } elseif ($tenantRef !== '') {
+        $tenant = $tenantById[$tenantRef] ?? [];
+    }
+
+    if ($lease && is_array($lease['tenantId'] ?? null)) {
+        $tenant = $lease['tenantId'];
+    }
+
+    $userId = pp_units_ref_id($tenant['userId'] ?? '');
+    $customerRecord = $userId !== ''
+        ? ($customerAssignmentByUserId[$userId] ?? null)
+        : null;
+
+    $unitRecord = [
+        'unit' => $unit,
+        'unitId' => $unitId,
+        'status' => $status,
+        'lease' => $lease,
+        'tenant' => $tenant,
+        'customerRecord' => $customerRecord,
+    ];
+
+    if ($status === 'Maintenance') {
+        $maintenanceUnits[] = $unitRecord;
+    } elseif ($status === 'Vacant') {
+        $vacantUnits[] = $unitRecord;
+    } else {
+        $occupiedUnits[] = $unitRecord;
     }
 }
 
+$totalUnits = count($units);
+$totalCustomers = count($customers);
+$assignedCount = count($assignedCustomers);
+$unassignedCount = count($unassignedCustomers);
+$vacantCount = count($vacantUnits);
+$occupiedCount = count($occupiedUnits);
+$maintenanceCount = count($maintenanceUnits);
+$occupancyRate = $totalUnits > 0
+    ? (int)round(($occupiedCount / $totalUnits) * 100)
+    : 0;
+
 /*
 |--------------------------------------------------------------------------
-| Page Layout
+| FLASH MESSAGES
+|--------------------------------------------------------------------------
+*/
+
+$flashMessage = (string)($_SESSION['units_flash_message'] ?? '');
+$flashType = (string)($_SESSION['units_flash_type'] ?? '');
+
+unset($_SESSION['units_flash_message'], $_SESSION['units_flash_type']);
+
+/*
+|--------------------------------------------------------------------------
+| PAGE LAYOUT
 |--------------------------------------------------------------------------
 */
 
 require_once __DIR__ . '/../../includes/header.php';
 require_once __DIR__ . '/../../includes/sidebar.php';
-
 ?>
 
 <main class="min-h-screen bg-slate-50 lg:ml-64">
-
     <div class="px-4 py-6 sm:px-6 lg:px-8">
 
-        <!-- =====================================================
-             HEADER
-        ====================================================== -->
-
         <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
             <div>
-                <h1 class="text-2xl font-bold text-slate-900">
-                    Units
-                </h1>
-
+                <h1 class="text-2xl font-bold text-slate-900">Units & Customer Assignments</h1>
                 <p class="mt-1 text-sm text-slate-500">
-                    Manage rental units, occupancy and customer assignments.
+                    Manage rental units, customer occupancy and lease assignments.
                 </p>
             </div>
 
             <div class="flex flex-wrap gap-3">
-
-                <button
-                    type="button"
-                    onclick="openCreateUnitModal()"
-                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-                >
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Unit
+                <button type="button" onclick="openCreateUnitModal()"
+                    class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">
+                    <span class="text-lg">+</span> Add Unit
                 </button>
 
-                <button
-                    type="button"
-                    onclick="openAssignCustomerModal()"
-                    class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-                >
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-8a4 4 0 100-8 4 4 0 000 8zm7-3h4m-2-2v4" />
-                    </svg>
+                <button type="button" onclick="openAssignCustomerModal()"
+                    class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
                     Assign Customer
                 </button>
-
             </div>
-
         </div>
-
-        <!-- =====================================================
-             FLASH MESSAGE
-        ====================================================== -->
 
         <?php if ($flashMessage !== ''): ?>
-
-            <div
-                class="mb-6 rounded-xl border px-4 py-3 <?= $flashType === 'success'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : 'border-red-200 bg-red-50 text-red-800' ?>"
-            >
+            <div class="mb-6 rounded-xl border px-4 py-3 <?= $flashType === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-red-200 bg-red-50 text-red-800' ?>">
                 <?= pp_units_e($flashMessage) ?>
             </div>
-
         <?php endif; ?>
 
-        <!-- =====================================================
-             STATISTICS
-        ====================================================== -->
+        <?php if ($apiErrors): ?>
+            <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p class="font-semibold">Some information could not be loaded.</p>
+                <p class="mt-1">
+                    The page may show incomplete assignment information until the relevant API endpoints are available.
+                </p>
+                <?php foreach ($apiErrors as $name => $message): ?>
+                    <p class="mt-1"><?= pp_units_e(ucfirst($name) . ': ' . $message) ?></p>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
 
-        <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <!-- SUMMARY CARDS -->
 
+        <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-sm font-medium text-slate-500">Total Units</p>
-                <p class="mt-2 text-3xl font-bold text-slate-900"><?= $totalUnits ?></p>
+                <div class="flex items-center justify-between">
+                    <p class="text-sm font-medium text-slate-500">Total Customers</p>
+                    <span class="rounded-lg bg-indigo-50 px-2.5 py-2 text-indigo-600">👥</span>
+                </div>
+                <p class="mt-3 text-3xl font-bold text-slate-900"><?= $totalCustomers ?></p>
+                <p class="mt-1 text-xs text-slate-500">Registered customer accounts</p>
             </div>
 
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-sm font-medium text-slate-500">Occupied</p>
-                <p class="mt-2 text-3xl font-bold text-slate-900"><?= $occupiedUnits ?></p>
+                <div class="flex items-center justify-between">
+                    <p class="text-sm font-medium text-slate-500">Assigned Customers</p>
+                    <span class="rounded-lg bg-emerald-50 px-2.5 py-2 text-emerald-600">✓</span>
+                </div>
+                <p class="mt-3 text-3xl font-bold text-slate-900"><?= $assignedCount ?></p>
+                <p class="mt-1 text-xs text-slate-500">Customers with a unit assignment</p>
             </div>
 
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-sm font-medium text-slate-500">Vacant</p>
-                <p class="mt-2 text-3xl font-bold text-slate-900"><?= $vacantUnits ?></p>
+                <div class="flex items-center justify-between">
+                    <p class="text-sm font-medium text-slate-500">Unassigned Customers</p>
+                    <span class="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-600">!</span>
+                </div>
+                <p class="mt-3 text-3xl font-bold text-slate-900"><?= $unassignedCount ?></p>
+                <p class="mt-1 text-xs text-slate-500">Customers waiting for a unit</p>
             </div>
 
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p class="text-sm font-medium text-slate-500">Occupancy Rate</p>
-                <p class="mt-2 text-3xl font-bold text-slate-900"><?= $occupancyRate ?>%</p>
+                <div class="flex items-center justify-between">
+                    <p class="text-sm font-medium text-slate-500">Vacant Units</p>
+                    <span class="rounded-lg bg-slate-100 px-2.5 py-2 text-slate-600">⌂</span>
+                </div>
+                <p class="mt-3 text-3xl font-bold text-slate-900"><?= $vacantCount ?></p>
+                <p class="mt-1 text-xs text-slate-500">
+                    <?= $occupiedCount ?> occupied · <?= $maintenanceCount ?> maintenance
+                </p>
             </div>
-
         </div>
 
-        <!-- =====================================================
-             UNITS TABLE
-        ====================================================== -->
+        <!-- CUSTOMER ASSIGNMENTS -->
 
-        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-
+        <section class="mb-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
                     <div>
-                        <h2 class="text-lg font-semibold text-slate-900">
-                            Rental Units
-                        </h2>
-                        <p class="text-sm text-slate-500">
-                            <?= $totalUnits ?>
-                            unit<?= $totalUnits === 1 ? '' : 's' ?>
-                            registered
+                        <h2 class="text-lg font-semibold text-slate-900">Customer Assignments</h2>
+                        <p class="mt-1 text-sm text-slate-500">
+                            View customers who have a unit and those who still need one.
                         </p>
                     </div>
 
-                    <div class="relative">
-                        <input
-                            type="text"
-                            id="unitSearch"
-                            placeholder="Search units..."
-                            oninput="filterUnits()"
-                            class="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64"
-                        >
-                        <svg class="absolute left-3 top-2.5 h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m2.35-5.65a8 8 0 11-16 0 8 8 0 0116 0z" />
-                        </svg>
-                    </div>
-
+                    <input id="customerSearch" type="search"
+                        placeholder="Search customers..."
+                        oninput="filterTable('customerSearch', 'customerRows')"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64">
                 </div>
             </div>
 
+            <div class="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-3">
+                <button type="button" onclick="showCustomerTab('all')"
+                    data-customer-tab="all"
+                    class="customer-tab rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">
+                    All (<?= $totalCustomers ?>)
+                </button>
+                <button type="button" onclick="showCustomerTab('assigned')"
+                    data-customer-tab="assigned"
+                    class="customer-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">
+                    Assigned (<?= $assignedCount ?>)
+                </button>
+                <button type="button" onclick="showCustomerTab('unassigned')"
+                    data-customer-tab="unassigned"
+                    class="customer-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">
+                    Unassigned (<?= $unassignedCount ?>)
+                </button>
+            </div>
+
             <div class="overflow-x-auto">
-
                 <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Customer</th>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Property</th>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Unit</th>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Lease Period</th>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Assignment</th>
+                            <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Action</th>
+                        </tr>
+                    </thead>
 
+                    <tbody id="customerRows" class="divide-y divide-slate-200">
+                    <?php if (!$customers): ?>
+                        <tr>
+                            <td colspan="6" class="px-5 py-12 text-center">
+                                <p class="font-semibold text-slate-900">No customers found</p>
+                                <p class="mt-1 text-sm text-slate-500">
+                                    Check that the admin customers API returns registered customer accounts.
+                                </p>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($customers as $customer): ?>
+                            <?php
+                            $userId = pp_units_customer_id($customer);
+                            $record = $customerAssignmentByUserId[$userId] ?? null;
+                            $assigned = $record !== null &&
+                                (!empty($record['unitId']));
+
+                            $lease = $record['lease'] ?? null;
+                            $unit = $record['unit'] ?? [];
+                            $property = $record['property'] ?? [];
+
+                            $name = pp_units_customer_name($customer);
+                            $email = pp_units_customer_email($customer);
+                            $propertyName = $assigned
+                                ? (string)($property['name'] ?? $property['propertyName'] ?? pp_units_property_name($unit))
+                                : 'Not assigned';
+                            $unitNumber = $assigned
+                                ? pp_units_unit_number($unit)
+                                : '—';
+
+                            $leasePeriod = '—';
+
+                            if ($lease) {
+                                $leasePeriod = pp_units_date($lease['startDate'] ?? null)
+                                    . ' – ' .
+                                    pp_units_date($lease['endDate'] ?? null);
+                            }
+
+                            $search = strtolower($name . ' ' . $email . ' ' . $propertyName . ' ' . $unitNumber);
+                            ?>
+                            <tr
+                                class="customer-row hover:bg-slate-50"
+                                data-search="<?= pp_units_e($search) ?>"
+                                data-assignment="<?= $assigned ? 'assigned' : 'unassigned' ?>">
+                                <td class="px-5 py-4">
+                                    <p class="font-semibold text-slate-900"><?= pp_units_e($name) ?></p>
+                                    <p class="mt-1 text-xs text-slate-500"><?= pp_units_e($email) ?></p>
+                                </td>
+                                <td class="px-5 py-4 text-sm text-slate-700">
+                                    <?= pp_units_e($propertyName) ?>
+                                </td>
+                                <td class="px-5 py-4 text-sm font-semibold text-slate-800">
+                                    <?= pp_units_e($unitNumber) ?>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-sm text-slate-600">
+                                    <?= pp_units_e($leasePeriod) ?>
+                                </td>
+                                <td class="px-5 py-4">
+                                    <?php if ($assigned): ?>
+                                        <span class="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                            Assigned
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                            Unassigned
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-right">
+                                    <?php if (!$assigned): ?>
+                                        <button type="button"
+                                            onclick="openAssignCustomerModal('<?= pp_units_e($userId) ?>')"
+                                            class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700">
+                                            Assign Unit
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="text-xs text-slate-400">Already assigned</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- UNITS DIRECTORY -->
+
+        <section class="mb-8 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-200 px-5 py-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-900">All Rental Units</h2>
+                        <p class="mt-1 text-sm text-slate-500">
+                            <?= $totalUnits ?> total · <?= $occupiedCount ?> occupied ·
+                            <?= $vacantCount ?> vacant · <?= $maintenanceCount ?> maintenance
+                        </p>
+                    </div>
+
+                    <input id="unitSearch" type="search"
+                        placeholder="Search units..."
+                        oninput="filterTable('unitSearch', 'unitRows')"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-64">
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 border-b border-slate-200 px-5 py-3">
+                <button type="button" onclick="showUnitTab('all')" data-unit-tab="all"
+                    class="unit-tab rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white">
+                    All
+                </button>
+                <button type="button" onclick="showUnitTab('Occupied')" data-unit-tab="Occupied"
+                    class="unit-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">
+                    Occupied
+                </button>
+                <button type="button" onclick="showUnitTab('Vacant')" data-unit-tab="Vacant"
+                    class="unit-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">
+                    Vacant
+                </button>
+                <button type="button" onclick="showUnitTab('Maintenance')" data-unit-tab="Maintenance"
+                    class="unit-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">
+                    Maintenance
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200">
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Unit</th>
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Property</th>
-                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Tenant</th>
+                            <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Tenant / Customer</th>
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Monthly Rent</th>
                             <th class="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
+                            <th class="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Action</th>
                         </tr>
                     </thead>
 
-                    <tbody id="unitsTableBody" class="divide-y divide-slate-200 bg-white">
+                    <tbody id="unitRows" class="divide-y divide-slate-200">
+                    <?php if (!$units): ?>
+                        <tr>
+                            <td colspan="6" class="px-5 py-12 text-center">
+                                <p class="font-semibold text-slate-900">No units found</p>
+                                <p class="mt-1 text-sm text-slate-500">Add a rental unit to get started.</p>
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($units as $unit): ?>
+                            <?php
+                            $unitId = pp_units_id($unit, ['_id', 'id', 'unitId']);
+                            $status = pp_units_status($unit);
+                            $unitNumber = pp_units_unit_number($unit);
+                            $propertyName = pp_units_property_name($unit);
+                            $propertyId = pp_units_property_id($unit);
+                            $rent = pp_units_rent($unit);
 
-                        <?php if (empty($units)): ?>
+                            $lease = $activeLeaseByUnitId[$unitId] ?? null;
+                            $tenant = [];
 
-                            <tr>
-                                <td colspan="5" class="px-5 py-12 text-center">
-                                    <div class="text-slate-500">
-                                        <p class="text-sm font-semibold text-slate-900">
-                                            No units found
-                                        </p>
-                                        <p class="mt-1 text-sm">
-                                            Add your first rental unit.
-                                        </p>
-                                    </div>
+                            if (is_array($unit['tenantId'] ?? null)) {
+                                $tenant = $unit['tenantId'];
+                            } else {
+                                $tenantId = pp_units_ref_id($unit['tenantId'] ?? '');
+                                $tenant = $tenantById[$tenantId] ?? [];
+                            }
+
+                            if ($lease && is_array($lease['tenantId'] ?? null)) {
+                                $tenant = $lease['tenantId'];
+                            }
+
+                            $tenantName = $tenant
+                                ? pp_units_customer_name($tenant)
+                                : (trim((string)($unit['tenantName'] ?? '')) ?: '—');
+
+                            $search = strtolower($unitNumber . ' ' . $propertyName . ' ' . $tenantName . ' ' . $status);
+                            ?>
+                            <tr class="unit-row hover:bg-slate-50"
+                                data-search="<?= pp_units_e($search) ?>"
+                                data-status="<?= pp_units_e($status) ?>">
+                                <td class="whitespace-nowrap px-5 py-4">
+                                    <p class="font-semibold text-slate-900"><?= pp_units_e($unitNumber) ?></p>
+                                    <?php if (!empty($unit['type'])): ?>
+                                        <p class="mt-1 text-xs text-slate-400"><?= pp_units_e($unit['type']) ?></p>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-5 py-4 text-sm text-slate-700">
+                                    <p class="font-medium"><?= pp_units_e($propertyName) ?></p>
+                                    <?php
+                                    $location = '';
+
+                                    if (is_array($unit['propertyId'] ?? null)) {
+                                        $location = (string)($unit['propertyId']['location'] ?? '');
+                                    } elseif (is_array($unit['property'] ?? null)) {
+                                        $location = (string)($unit['property']['location'] ?? '');
+                                    }
+                                    ?>
+                                    <?php if ($location !== ''): ?>
+                                        <p class="mt-1 text-xs text-slate-400"><?= pp_units_e($location) ?></p>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-5 py-4 text-sm text-slate-700">
+                                    <?= pp_units_e($tenantName) ?>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-800">
+                                    <?= pp_units_money($rent) ?>
+                                </td>
+                                <td class="px-5 py-4">
+                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold <?= pp_units_status_badge($status) ?>">
+                                        <?= pp_units_e($status) ?>
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-right">
+                                    <?php if ($status === 'Vacant'): ?>
+                                        <button type="button"
+                                            onclick="openAssignCustomerModal('', '<?= pp_units_e($propertyId) ?>', '<?= pp_units_e($unitId) ?>')"
+                                            class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">
+                                            Assign
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="text-xs text-slate-400">—</span>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
-
-                        <?php else: ?>
-
-                            <?php foreach ($units as $unit): ?>
-
-                                <?php
-                                $unitNumber   = pp_unit_number($unit);
-                                $propertyName = pp_unit_property($unit);
-                                $location     = pp_unit_location($unit);
-                                $tenant       = pp_unit_tenant($unit);
-                                $rent         = pp_unit_rent($unit);
-                                $status       = pp_unit_status($unit);
-
-                                $searchText = strtolower(
-                                    $unitNumber . ' ' .
-                                    $propertyName . ' ' .
-                                    $location . ' ' .
-                                    $tenant . ' ' .
-                                    $status
-                                );
-                                ?>
-
-                                <tr
-                                    class="unit-row hover:bg-slate-50"
-                                    data-search="<?= pp_units_e($searchText) ?>"
-                                >
-                                    <td class="whitespace-nowrap px-5 py-4">
-                                        <div class="font-semibold text-slate-900">
-                                            <?= pp_units_e($unitNumber) ?>
-                                        </div>
-                                        <?php if (!empty($unit['type'])): ?>
-                                            <div class="mt-0.5 text-xs text-slate-400">
-                                                <?= pp_units_e($unit['type']) ?>
-                                            </div>
-                                        <?php endif; ?>
-                                    </td>
-
-                                    <td class="px-5 py-4">
-                                        <div class="text-sm font-medium text-slate-800">
-                                            <?= pp_units_e($propertyName) ?>
-                                        </div>
-                                        <?php if ($location !== ''): ?>
-                                            <div class="mt-0.5 text-xs text-slate-400">
-                                                <?= pp_units_e($location) ?>
-                                            </div>
-                                        <?php endif; ?>
-                                    </td>
-
-                                    <td class="px-5 py-4">
-                                        <?php if ($tenant !== 'Vacant'): ?>
-                                            <span class="text-sm font-medium text-slate-800">
-                                                <?= pp_units_e($tenant) ?>
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="text-sm text-slate-400">
-                                                Vacant
-                                            </span>
-                                        <?php endif; ?>
-                                    </td>
-
-                                    <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-slate-800">
-                                        <?= pp_units_money($rent) ?>
-                                    </td>
-
-                                    <td class="whitespace-nowrap px-5 py-4">
-                                        <?php if ($status === 'Occupied'): ?>
-                                            <span class="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                                                Occupied
-                                            </span>
-                                        <?php else: ?>
-                                            <span class="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                                                Vacant
-                                            </span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-
-                            <?php endforeach; ?>
-
-                        <?php endif; ?>
-
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                     </tbody>
-
                 </table>
+            </div>
+        </section>
 
+        <!-- VACANT UNITS SUMMARY -->
+
+        <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-200 px-5 py-4">
+                <h2 class="text-lg font-semibold text-slate-900">Available Vacant Units</h2>
+                <p class="mt-1 text-sm text-slate-500">
+                    Units that can be assigned to customers.
+                </p>
             </div>
 
-        </div>
+            <?php if (!$vacantUnits): ?>
+                <div class="px-5 py-10 text-center">
+                    <p class="font-semibold text-slate-900">No vacant units available</p>
+                    <p class="mt-1 text-sm text-slate-500">All units are occupied or under maintenance.</p>
+                </div>
+            <?php else: ?>
+                <div class="grid grid-cols-1 gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+                    <?php foreach ($vacantUnits as $record): ?>
+                        <?php
+                        $unit = $record['unit'];
+                        $unitId = $record['unitId'];
+                        $propertyId = pp_units_property_id($unit);
+                        ?>
+                        <div class="rounded-xl border border-slate-200 p-4 transition hover:border-indigo-200 hover:shadow-sm">
+                            <div class="flex items-start justify-between gap-3">
+                                <div>
+                                    <p class="font-semibold text-slate-900">
+                                        <?= pp_units_e(pp_units_unit_number($unit)) ?>
+                                    </p>
+                                    <p class="mt-1 text-sm text-slate-500">
+                                        <?= pp_units_e(pp_units_property_name($unit)) ?>
+                                    </p>
+                                </div>
+                                <span class="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                    Vacant
+                                </span>
+                            </div>
 
+                            <div class="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+                                <div>
+                                    <p class="text-xs text-slate-500">Monthly rent</p>
+                                    <p class="mt-1 font-bold text-slate-900">
+                                        <?= pp_units_money(pp_units_rent($unit)) ?>
+                                    </p>
+                                </div>
+                                <button type="button"
+                                    onclick="openAssignCustomerModal('', '<?= pp_units_e($propertyId) ?>', '<?= pp_units_e($unitId) ?>')"
+                                    class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700">
+                                    Assign Customer
+                                </button>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </section>
     </div>
-
 </main>
 
 <!-- =========================================================
      CREATE UNIT MODAL
 ========================================================= -->
 
-<div id="createUnitModal" class="fixed inset-0 z-50 hidden">
-
-    <div class="absolute inset-0 bg-slate-900/50" onclick="closeCreateUnitModal()"></div>
+<div id="createUnitModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div class="fixed inset-0 bg-slate-900/50" onclick="closeCreateUnitModal()"></div>
 
     <div class="relative flex min-h-full items-center justify-center p-4">
-
         <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-
             <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-
                 <div>
-                    <h2 class="text-lg font-bold text-slate-900">
-                        Add Rental Unit
-                    </h2>
-                    <p class="text-sm text-slate-500">
-                        Create a new rental unit.
-                    </p>
+                    <h2 class="text-lg font-bold text-slate-900">Add Rental Unit</h2>
+                    <p class="text-sm text-slate-500">Create a new rental unit.</p>
                 </div>
-
-                <button
-                    type="button"
-                    onclick="closeCreateUnitModal()"
-                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                >
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                <button type="button" onclick="closeCreateUnitModal()"
+                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Close">
+                    ✕
                 </button>
-
             </div>
 
             <form method="POST" action="units.php" class="space-y-5 p-6">
-
                 <input type="hidden" name="action" value="create_unit">
 
-                <!-- PROPERTY -->
-
                 <div>
-                    <label for="propertyId" class="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Property
-                    </label>
-
-                    <select
-                        name="propertyId"
-                        id="propertyId"
-                        required
-                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
+                    <label for="createPropertyId" class="mb-1.5 block text-sm font-semibold text-slate-700">Property</label>
+                    <select name="propertyId" id="createPropertyId" required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                         <option value="">Select property</option>
-
                         <?php foreach ($properties as $property): ?>
-
-                            <?php
-                            /*
-                             * IMPORTANT:
-                             * The backend casts this value to a MongoDB ObjectId.
-                             * Only `_id` (or `id`) is valid. Sending `propertyId`
-                             * (e.g. "PROP-003") causes:
-                             *   CastError: Cast to ObjectId failed...
-                             */
-                            $optionValue = pp_backend_id(
-                                $property,
-                                ['_id', 'id']
-                            );
-
-                            $propertyName = trim((string)(
-                                $property['name']
-                                ?? $property['propertyName']
-                                ?? $property['title']
-                                ?? 'Unnamed Property'
-                            ));
-
-                            $propertyLocation = trim((string)(
-                                $property['location'] ?? ''
-                            ));
-                            ?>
-
-                            <?php if ($optionValue !== ''): ?>
-                                <option value="<?= pp_units_e($optionValue) ?>">
-                                    <?= pp_units_e($propertyName) ?>
-                                    <?php if ($propertyLocation !== ''): ?>
-                                        — <?= pp_units_e($propertyLocation) ?>
-                                    <?php endif; ?>
+                            <?php $id = pp_units_id($property); ?>
+                            <?php if ($id !== ''): ?>
+                                <option value="<?= pp_units_e($id) ?>">
+                                    <?= pp_units_e($property['name'] ?? $property['propertyName'] ?? 'Unnamed Property') ?>
                                 </option>
                             <?php endif; ?>
-
                         <?php endforeach; ?>
-
-                    </select>
-
-                    <?php if (empty($properties)): ?>
-                        <p class="mt-1.5 text-xs text-amber-600">
-                            No properties are currently available.
-                        </p>
-                    <?php endif; ?>
-                </div>
-
-                <!-- UNIT NUMBER -->
-
-                <div>
-                    <label for="unitNumber" class="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Unit Number
-                    </label>
-                    <input
-                        type="text"
-                        name="unitNumber"
-                        id="unitNumber"
-                        required
-                        placeholder="e.g. A-101"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
-                </div>
-
-                <!-- RENT -->
-
-                <div>
-                    <label for="rent" class="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Monthly Rent
-                    </label>
-                    <input
-                        type="number"
-                        name="rent"
-                        id="rent"
-                        min="0"
-                        step="0.01"
-                        required
-                        placeholder="25000"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
-                </div>
-
-                <!-- STATUS -->
-
-                <div>
-                    <label for="status" class="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Status
-                    </label>
-                    <select
-                        name="status"
-                        id="status"
-                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
-                        <option value="Vacant">Vacant</option>
-                        <option value="Occupied">Occupied</option>
                     </select>
                 </div>
 
-                <!-- ACTIONS -->
+                <div>
+                    <label for="unitNumber" class="mb-1.5 block text-sm font-semibold text-slate-700">Unit Number</label>
+                    <input type="text" name="unitNumber" id="unitNumber" required placeholder="e.g. A-101"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                </div>
+
+                <div>
+                    <label for="rent" class="mb-1.5 block text-sm font-semibold text-slate-700">Monthly Rent (KES)</label>
+                    <input type="number" name="rent" id="rent" min="0" step="0.01" required placeholder="25000"
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                </div>
 
                 <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
-                    <button
-                        type="button"
-                        onclick="closeCreateUnitModal()"
-                        class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
+                    <button type="button" onclick="closeCreateUnitModal()"
+                        class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                         Cancel
                     </button>
-                    <button
-                        type="submit"
-                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                    >
+                    <button type="submit"
+                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
                         Create Unit
                     </button>
                 </div>
-
             </form>
-
         </div>
-
     </div>
-
 </div>
 
 <!-- =========================================================
      ASSIGN CUSTOMER MODAL
 ========================================================= -->
 
-<div id="assignCustomerModal" class="fixed inset-0 z-50 hidden">
-
-    <div class="absolute inset-0 bg-slate-900/50" onclick="closeAssignCustomerModal()"></div>
+<div id="assignCustomerModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div class="fixed inset-0 bg-slate-900/60" onclick="closeAssignCustomerModal()"></div>
 
     <div class="relative flex min-h-full items-center justify-center p-4">
-
         <div class="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
-
-            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5">
                 <div>
-                    <h2 class="text-lg font-bold text-slate-900">
-                        Assign Customer
-                    </h2>
-                    <p class="text-sm text-slate-500">
-                        Assign a customer to a vacant unit.
-                    </p>
+                    <h2 class="text-lg font-bold text-slate-900">Assign Customer</h2>
+                    <p class="mt-1 text-sm text-slate-500">Select a customer, property, unit and lease dates.</p>
                 </div>
-
-                <button
-                    type="button"
-                    onclick="closeAssignCustomerModal()"
-                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-                >
-                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                <button type="button" onclick="closeAssignCustomerModal()"
+                    class="rounded-lg p-2 text-slate-400 hover:bg-slate-100" aria-label="Close">
+                    ✕
                 </button>
-
             </div>
 
-            <form method="POST" action="units.php" class="space-y-5 p-6">
-
+            <form id="assignCustomerForm" method="POST" action="units.php" class="space-y-5 p-6">
                 <input type="hidden" name="action" value="assign_customer">
 
-                <!-- UNIT -->
-
                 <div>
-                    <label for="assignUnitId" class="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Vacant Unit
-                    </label>
-                    <select
-                        name="unitId"
-                        id="assignUnitId"
-                        required
-                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
-                        <option value="">Select vacant unit</option>
-
-                        <?php foreach ($vacantUnitsList as $unit): ?>
+                    <label for="customerId" class="mb-1.5 block text-sm font-semibold text-slate-700">Customer *</label>
+                    <select name="customerId" id="customerId" required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">Select customer</option>
+                        <?php foreach ($unassignedCustomers as $record): ?>
                             <?php
-                            $assignUnitId     = pp_unit_id($unit);
-                            $assignUnitNumber = pp_unit_number($unit);
-                            $assignProperty   = pp_unit_property($unit);
+                            $customer = $record['customer'];
+                            $id = pp_units_customer_id($customer);
+                            $name = pp_units_customer_name($customer);
+                            $email = pp_units_customer_email($customer);
                             ?>
-
-                            <?php if ($assignUnitId !== ''): ?>
-                                <option value="<?= pp_units_e($assignUnitId) ?>">
-                                    <?= pp_units_e($assignUnitNumber) ?>
-                                    — <?= pp_units_e($assignProperty) ?>
+                            <?php if ($id !== ''): ?>
+                                <option value="<?= pp_units_e($id) ?>">
+                                    <?= pp_units_e($name) ?><?= $email !== '' ? ' — ' . pp_units_e($email) : '' ?>
                                 </option>
                             <?php endif; ?>
                         <?php endforeach; ?>
+                    </select>
+                    <p class="mt-1 text-xs text-slate-500">Only customers not currently assigned are listed.</p>
+                </div>
 
+                <div>
+                    <label for="assignPropertyId" class="mb-1.5 block text-sm font-semibold text-slate-700">Property *</label>
+                    <select name="propertyId" id="assignPropertyId" required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">Select property</option>
+                        <?php foreach ($properties as $property): ?>
+                            <?php
+                            $id = pp_units_id($property);
+                            $name = $property['name'] ?? $property['propertyName'] ?? 'Unnamed Property';
+                            ?>
+                            <?php if ($id !== ''): ?>
+                                <option value="<?= pp_units_e($id) ?>"><?= pp_units_e($name) ?></option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
-                <!-- CUSTOMER -->
-
                 <div>
-                    <label for="customerId" class="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Customer ID
-                    </label>
-                    <input
-                        type="text"
-                        name="customerId"
-                        id="customerId"
-                        required
-                        placeholder="Enter customer ID"
-                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
+                    <label for="assignUnitId" class="mb-1.5 block text-sm font-semibold text-slate-700">Vacant Unit *</label>
+                    <select name="unitId" id="assignUnitId" required disabled
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100">
+                        <option value="">Select a property first</option>
+                        <?php foreach ($vacantUnits as $record): ?>
+                            <?php
+                            $unit = $record['unit'];
+                            $id = $record['unitId'];
+                            $propertyId = pp_units_property_id($unit);
+                            ?>
+                            <?php if ($id !== '' && $propertyId !== ''): ?>
+                                <option value="<?= pp_units_e($id) ?>"
+                                    data-property-id="<?= pp_units_e($propertyId) ?>">
+                                    <?= pp_units_e(pp_units_unit_number($unit)) ?>
+                                    — <?= pp_units_e(pp_units_property_name($unit)) ?>
+                                    — <?= pp_units_money(pp_units_rent($unit)) ?>/month
+                                </option>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                    <p id="assignUnitHelp" class="mt-1.5 text-xs text-slate-500">Choose a property to see its vacant units.</p>
                 </div>
 
-                <!-- ACTIONS -->
+                <div>
+                    <label for="startDate" class="mb-1.5 block text-sm font-semibold text-slate-700">Lease Start Date *</label>
+                    <input type="date" name="startDate" id="startDate" required
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                </div>
+
+                <div>
+                    <label for="endDate" class="mb-1.5 block text-sm font-semibold text-slate-700">Lease End Date *</label>
+                    <input type="date" name="endDate" id="endDate" required
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                </div>
 
                 <div class="flex justify-end gap-3 border-t border-slate-200 pt-5">
-                    <button
-                        type="button"
-                        onclick="closeAssignCustomerModal()"
-                        class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
+                    <button type="button" onclick="closeAssignCustomerModal()"
+                        class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                         Cancel
                     </button>
-                    <button
-                        type="submit"
-                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                    >
+                    <button type="submit" id="assignSubmitButton"
+                        class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
                         Assign Customer
                     </button>
                 </div>
-
             </form>
-
         </div>
-
     </div>
-
 </div>
 
 <script>
-
 function openCreateUnitModal() {
-    const modal = document.getElementById('createUnitModal');
-    if (!modal) return;
-    modal.classList.remove('hidden');
+    document.getElementById('createUnitModal')?.classList.remove('hidden');
     document.body.classList.add('overflow-hidden');
 }
 
 function closeCreateUnitModal() {
-    const modal = document.getElementById('createUnitModal');
-    if (!modal) return;
-    modal.classList.add('hidden');
+    document.getElementById('createUnitModal')?.classList.add('hidden');
     document.body.classList.remove('overflow-hidden');
 }
 
-function openAssignCustomerModal() {
+function openAssignCustomerModal(customerId = '', propertyId = '', unitId = '') {
     const modal = document.getElementById('assignCustomerModal');
     if (!modal) return;
+
     modal.classList.remove('hidden');
     document.body.classList.add('overflow-hidden');
+
+    const customerSelect = document.getElementById('customerId');
+    const propertySelect = document.getElementById('assignPropertyId');
+    const unitSelect = document.getElementById('assignUnitId');
+
+    if (customerSelect && customerId) customerSelect.value = customerId;
+    if (propertySelect && propertyId) propertySelect.value = propertyId;
+
+    filterAssignableUnits();
+
+    if (unitSelect && unitId) {
+        unitSelect.value = unitId;
+    }
 }
 
 function closeAssignCustomerModal() {
-    const modal = document.getElementById('assignCustomerModal');
-    if (!modal) return;
-    modal.classList.add('hidden');
+    document.getElementById('assignCustomerModal')?.classList.add('hidden');
     document.body.classList.remove('overflow-hidden');
 }
 
-function filterUnits() {
-    const input = document.getElementById('unitSearch');
-    if (!input) return;
+function filterTable(searchId, tableId) {
+    const query = (document.getElementById(searchId)?.value || '').toLowerCase().trim();
 
-    const search = input.value.toLowerCase().trim();
-    const rows = document.querySelectorAll('.unit-row');
-
-    rows.forEach(function (row) {
-        const text = (row.dataset.search || '').toLowerCase();
-
-        if (search === '' || text.includes(search)) {
-            row.classList.remove('hidden');
-        } else {
-            row.classList.add('hidden');
-        }
+    document.querySelectorAll('#' + tableId + ' tr').forEach(row => {
+        const text = (row.dataset.search || row.innerText || '').toLowerCase();
+        row.classList.toggle('hidden', query !== '' && !text.includes(query));
     });
 }
 
-document.addEventListener('keydown', function (event) {
-    if (event.key !== 'Escape') return;
-    closeCreateUnitModal();
-    closeAssignCustomerModal();
+let customerTab = 'all';
+let unitTab = 'all';
+
+function showCustomerTab(tab) {
+    customerTab = tab;
+
+    document.querySelectorAll('.customer-tab').forEach(button => {
+        const active = button.dataset.customerTab === tab;
+        button.className = active
+            ? 'customer-tab rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white'
+            : 'customer-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200';
+    });
+
+    document.querySelectorAll('.customer-row').forEach(row => {
+        const matches = tab === 'all' || row.dataset.assignment === tab;
+        row.classList.toggle('hidden', !matches);
+    });
+
+    filterTable('customerSearch', 'customerRows');
+}
+
+function showUnitTab(tab) {
+    unitTab = tab;
+
+    document.querySelectorAll('.unit-tab').forEach(button => {
+        const active = button.dataset.unitTab === tab;
+        button.className = active
+            ? 'unit-tab rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white'
+            : 'unit-tab rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200';
+    });
+
+    document.querySelectorAll('.unit-row').forEach(row => {
+        const matches = tab === 'all' || row.dataset.status === tab;
+        row.classList.toggle('hidden', !matches);
+    });
+
+    filterTable('unitSearch', 'unitRows');
+}
+
+const propertySelect = document.getElementById('assignPropertyId');
+const unitSelect = document.getElementById('assignUnitId');
+const unitHelp = document.getElementById('assignUnitHelp');
+
+function filterAssignableUnits() {
+    if (!propertySelect || !unitSelect) return;
+
+    const propertyId = propertySelect.value;
+    let count = 0;
+
+    Array.from(unitSelect.options).forEach((option, index) => {
+        if (index === 0) return;
+
+        const matches = propertyId !== '' && option.dataset.propertyId === propertyId;
+        option.hidden = !matches;
+        option.disabled = !matches;
+
+        if (matches) count++;
+    });
+
+    unitSelect.value = '';
+    unitSelect.disabled = propertyId === '' || count === 0;
+
+    if (propertyId === '') {
+        unitSelect.options[0].text = 'Select a property first';
+        unitHelp.textContent = 'Choose a property to see its vacant units.';
+    } else if (count === 0) {
+        unitSelect.options[0].text = 'No vacant units available';
+        unitHelp.textContent = 'This property has no vacant units available.';
+    } else {
+        unitSelect.options[0].text = 'Select vacant unit';
+        unitHelp.textContent = count + ' vacant unit(s) available.';
+    }
+}
+
+propertySelect?.addEventListener('change', filterAssignableUnits);
+
+const startInput = document.getElementById('startDate');
+const endInput = document.getElementById('endDate');
+
+startInput?.addEventListener('change', () => {
+    if (!endInput) return;
+
+    endInput.min = startInput.value;
+
+    if (endInput.value && endInput.value <= startInput.value) {
+        endInput.value = '';
+    }
+
+    endInput.setCustomValidity('');
 });
 
+endInput?.addEventListener('change', () => {
+    if (startInput?.value && endInput.value && endInput.value <= startInput.value) {
+        endInput.setCustomValidity('The end date must be after the start date.');
+    } else {
+        endInput.setCustomValidity('');
+    }
+});
+
+document.getElementById('assignCustomerForm')?.addEventListener('submit', event => {
+    const customer = document.getElementById('customerId')?.value;
+    const property = propertySelect?.value;
+    const unit = unitSelect?.value;
+    const start = startInput?.value;
+    const end = endInput?.value;
+
+    if (!customer || !property || !unit || !start || !end) {
+        event.preventDefault();
+        event.currentTarget.reportValidity();
+        return;
+    }
+
+    if (end <= start) {
+        event.preventDefault();
+        endInput.setCustomValidity('The end date must be after the start date.');
+        endInput.reportValidity();
+    }
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        closeCreateUnitModal();
+        closeAssignCustomerModal();
+    }
+});
 </script>
 
-<?php
-
-require_once __DIR__ . '/../../includes/footer.php';
-
-?>
+<?php require_once __DIR__ . '/../../includes/footer.php'; ?>
