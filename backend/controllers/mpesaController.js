@@ -1,4 +1,3 @@
-
 const Payment = require("../models/Payment");
 const Tenant = require("../models/Tenant");
 const Lease = require("../models/Lease");
@@ -6,70 +5,95 @@ const Notification = require("../models/Notification");
 
 const { initiateStkPush } = require("../services/mpesa");
 
-/*
-|--------------------------------------------------------------------------
-| Normalize Kenyan mobile numbers
-|--------------------------------------------------------------------------
-| Accepts:
-| 0712345678
-| 0112345678
-| 254712345678
-| 254112345678
-| +254712345678
-| +254 112 345 678
-|
-| Sends to Safaricom as: 254XXXXXXXXX
-|--------------------------------------------------------------------------
-*/
+/**
+ * Get the authenticated user's ID.
+ */
+function getUserId(req) {
+  return req.user?.id || req.user?._id || null;
+}
 
+/**
+ * Normalize Kenyan mobile numbers.
+ *
+ * Accepted:
+ * 0712345678
+ * 0112345678
+ * 254712345678
+ * 254112345678
+ * +254712345678
+ * +254 112 345 678
+ *
+ * Returned format: 254XXXXXXXXX
+ */
 function normalizeKenyanPhone(phone) {
   let number = String(phone || "").replace(/\D/g, "");
 
   if (number.startsWith("0")) {
     number = "254" + number.slice(1);
+  } else if (
+    number.startsWith("7") ||
+    number.startsWith("1")
+  ) {
+    number = "254" + number;
   }
 
   if (!/^254[17]\d{8}$/.test(number)) {
     throw new Error(
-      "Enter a valid Kenyan mobile number, such as 0712345678 or 0112345678."
+      "Enter a valid Kenyan M-Pesa number, such as 0712345678 or +254712345678."
     );
   }
 
   return number;
 }
 
-/*
-|--------------------------------------------------------------------------
-| Customer initiates STK Push
-|--------------------------------------------------------------------------
-*/
-
+/**
+ * Customer initiates an M-Pesa STK Push.
+ *
+ * POST /api/mpesa/stk-push
+ *
+ * Body:
+ * {
+ *   "phoneNumber": "0712345678",
+ *   "amount": 25000,
+ *   "leaseId": "..."
+ * }
+ */
 const stkPush = async (req, res) => {
   try {
-    const { phoneNumber, amount, leaseId } = req.body;
-
-    const userId = req.user?.id || req.user?._id;
+    const userId = getUserId(req);
+    const { phoneNumber, amount, leaseId } = req.body || {};
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Please log in again to make a payment.",
+        message: "Your session has expired. Please log in again.",
       });
     }
 
-    if (!phoneNumber || amount === undefined || amount === null || amount === "") {
+    if (
+      phoneNumber === undefined ||
+      phoneNumber === null ||
+      String(phoneNumber).trim() === "" ||
+      amount === undefined ||
+      amount === null ||
+      String(amount).trim() === ""
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Phone number and amount are required.",
+        message: "M-Pesa phone number and payment amount are required.",
       });
     }
 
     const paymentAmount = Number(amount);
 
-    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+    if (
+      !Number.isFinite(paymentAmount) ||
+      paymentAmount <= 0 ||
+      !Number.isSafeInteger(Math.round(paymentAmount))
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Enter a valid amount greater than zero.",
+        message: "Enter a valid payment amount greater than zero.",
       });
     }
 
@@ -89,13 +113,20 @@ const stkPush = async (req, res) => {
     if (!tenant) {
       return res.status(404).json({
         success: false,
-        message: "Customer tenant record not found.",
+        message: "Your customer tenant record could not be found.",
       });
     }
 
     let lease = null;
 
     if (leaseId) {
+      if (!/^[a-f\d]{24}$/i.test(String(leaseId))) {
+        return res.status(400).json({
+          success: false,
+          message: "The selected lease ID is invalid.",
+        });
+      }
+
       lease = await Lease.findById(leaseId);
 
       if (
@@ -115,23 +146,34 @@ const stkPush = async (req, res) => {
       }).sort({ createdAt: -1 });
     }
 
-    // Send the normalized customer number to the M-Pesa service.
-    console.log(
-      `[MPESA STK] Initiating request for customer ${userId}; phone ending ${normalizedPhone.slice(-4)}`
-    );
+    if (!lease) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No active lease was found for your account. Please contact the administrator.",
+      });
+    }
+
+    const finalAmount = Math.round(paymentAmount);
+
+    console.log("[MPESA STK] Request started:", {
+      customerId: String(userId),
+      leaseId: String(lease._id),
+      phoneEnding: normalizedPhone.slice(-4),
+      amount: finalAmount,
+    });
 
     const stkResponse = await initiateStkPush({
       phoneNumber: normalizedPhone,
-      amount: Math.round(paymentAmount),
+      amount: finalAmount,
       accountReference: tenant.tenantId || "PropertyPro",
       transactionDesc: "Rent payment",
     });
 
     if (String(stkResponse?.ResponseCode) !== "0") {
-      console.error("[MPESA STK] Safaricom rejected the request:", {
+      console.error("[MPESA STK] Safaricom rejected request:", {
         responseCode: stkResponse?.ResponseCode,
         responseDescription: stkResponse?.ResponseDescription,
-        customerMessage: stkResponse?.CustomerMessage,
       });
 
       return res.status(400).json({
@@ -143,19 +185,40 @@ const stkPush = async (req, res) => {
       });
     }
 
-    if (!stkResponse.CheckoutRequestID) {
+    if (
+      !stkResponse.CheckoutRequestID ||
+      !stkResponse.MerchantRequestID
+    ) {
       console.error(
-        "[MPESA STK] Missing CheckoutRequestID in Safaricom response."
+        "[MPESA STK] Safaricom response is missing checkout identifiers."
       );
 
       return res.status(502).json({
         success: false,
         message:
-          "Safaricom did not return a checkout reference. Please try again.",
+          "Safaricom did not return the payment reference. Please try again.",
       });
     }
 
-    // Create a pending payment; the Safaricom callback updates its status.
+    // Avoid creating another pending payment for the same checkout request.
+    const existingPayment = await Payment.findOne({
+      checkoutRequestId: stkResponse.CheckoutRequestID,
+    });
+
+    if (existingPayment) {
+      return res.status(200).json({
+        success: true,
+        message:
+          "This M-Pesa payment request has already been recorded. Check your phone for the prompt.",
+        data: {
+          paymentId: existingPayment.paymentId,
+          checkoutRequestId: existingPayment.checkoutRequestId,
+          phoneNumber: existingPayment.mpesaPhoneNumber,
+          status: existingPayment.status,
+        },
+      });
+    }
+
     const paymentId =
       "MP-" +
       Date.now() +
@@ -166,8 +229,8 @@ const stkPush = async (req, res) => {
       paymentId,
       tenantId: tenant._id,
       customerId: userId,
-      leaseId: lease ? lease._id : null,
-      amount: Math.round(paymentAmount),
+      leaseId: lease._id,
+      amount: finalAmount,
       paymentMethod: "M-Pesa",
       status: "Pending",
       paymentDate: new Date(),
@@ -180,11 +243,11 @@ const stkPush = async (req, res) => {
     return res.status(200).json({
       success: true,
       message:
-        "STK Push requested. Check the phone number entered and follow the M-Pesa prompt.",
+        "M-Pesa prompt requested. Check your phone and follow the instructions to complete the payment.",
       data: {
         paymentId: payment.paymentId,
-        checkoutRequestId: stkResponse.CheckoutRequestID,
-        phoneNumber: normalizedPhone,
+        checkoutRequestId: payment.checkoutRequestId,
+        phoneNumber: payment.mpesaPhoneNumber,
         status: payment.status,
       },
     });
@@ -194,32 +257,42 @@ const stkPush = async (req, res) => {
       error.response?.data || error.message
     );
 
+    const status = error.response?.status;
+
+    if (status === 401 || status === 403) {
+      return res.status(502).json({
+        success: false,
+        message:
+          "Safaricom rejected the API credentials or permissions. Check the M-Pesa configuration in your server environment.",
+      });
+    }
+
     return res.status(500).json({
       success: false,
-      message:
-        error.message?.includes("timeout")
-          ? "The M-Pesa service timed out. Please try again."
-          : "Failed to initiate M-Pesa payment. Please try again.",
+      message: String(error.message || "").toLowerCase().includes("timeout")
+        ? "The M-Pesa service timed out. Please try again."
+        : "Failed to initiate M-Pesa payment. Please check the server logs and try again.",
     });
   }
 };
 
-/*
-|--------------------------------------------------------------------------
-| Safaricom STK callback
-|--------------------------------------------------------------------------
-*/
-
+/**
+ * Safaricom sends the result to this public callback.
+ *
+ * POST /api/mpesa/callback
+ *
+ * This endpoint must not require customer JWT authentication.
+ */
 const stkCallback = async (req, res) => {
   try {
     const callback = req.body?.Body?.stkCallback;
 
-    if (!callback) {
+    if (!callback || !callback.CheckoutRequestID) {
       console.error("[MPESA CALLBACK] Invalid callback payload.");
 
       return res.status(400).json({
-        success: false,
-        message: "Invalid callback payload.",
+        ResultCode: 1,
+        ResultDesc: "Invalid callback payload.",
       });
     }
 
@@ -230,7 +303,7 @@ const stkCallback = async (req, res) => {
       CallbackMetadata,
     } = callback;
 
-    console.log("[MPESA CALLBACK] Received result:", {
+    console.log("[MPESA CALLBACK] Received:", {
       checkoutRequestId: CheckoutRequestID,
       resultCode: ResultCode,
       resultDescription: ResultDesc,
@@ -242,68 +315,91 @@ const stkCallback = async (req, res) => {
 
     if (!payment) {
       console.error(
-        "[MPESA CALLBACK] No payment found for checkout:",
+        "[MPESA CALLBACK] Payment not found for checkout:",
         CheckoutRequestID
       );
 
-      // Acknowledge the callback to Safaricom.
+      // Acknowledge Safaricom's callback. Investigate the unmatched
+      // checkout reference in the server logs.
       return res.status(200).json({
         ResultCode: 0,
         ResultDesc: "Accepted",
       });
     }
 
-    const wasPending = payment.status === "Pending";
+    // Do not downgrade a payment that has already been marked Paid.
+    if (payment.status === "Paid") {
+      return res.status(200).json({
+        ResultCode: 0,
+        ResultDesc: "Accepted",
+      });
+    }
 
-    payment.mpesaResultCode = ResultCode;
-    payment.mpesaResultDesc = ResultDesc || "";
+    const previousStatus = payment.status;
+    const successful = Number(ResultCode) === 0;
 
-    if (Number(ResultCode) === 0) {
+    payment.mpesaResultCode = Number(ResultCode);
+    payment.mpesaResultDesc = String(ResultDesc || "");
+
+    if (successful) {
       const items = CallbackMetadata?.Item || [];
 
       const getValue = (name) =>
         items.find((item) => item.Name === name)?.Value;
 
-      payment.mpesaReceiptNumber =
-        getValue("MpesaReceiptNumber") || payment.mpesaReceiptNumber || "";
-
-      payment.status = "Paid";
-
+      const receipt = getValue("MpesaReceiptNumber");
       const callbackPhone = getValue("PhoneNumber");
+      const callbackAmount = getValue("Amount");
 
-      if (callbackPhone) {
-        payment.mpesaPhoneNumber = String(callbackPhone);
+      if (receipt) {
+        payment.mpesaReceiptNumber = String(receipt);
       }
 
-      const callbackAmount = getValue("Amount");
+      if (callbackPhone !== undefined && callbackPhone !== null) {
+        payment.mpesaPhoneNumber = String(callbackPhone);
+      }
 
       if (callbackAmount !== undefined && callbackAmount !== null) {
         payment.mpesaPaidAmount = Number(callbackAmount);
       }
+
+      // Mark as Paid only when Safaricom reports success.
+      payment.status = "Paid";
     } else {
       payment.status = "Failed";
     }
 
     await payment.save();
 
-    // Avoid sending duplicate notifications for repeated callbacks.
-    if (wasPending) {
-      await Notification.create({
-        recipientRole: "Administrator",
-        recipientId: null,
-        type: "payment_created",
-        title:
-          payment.status === "Paid"
-            ? "M-Pesa Payment Received"
-            : "M-Pesa Payment Failed",
-        message: `M-Pesa payment ${payment.paymentId} for KES ${payment.amount} is now ${payment.status}.`,
-        data: {
-          paymentId: payment._id,
-          tenantId: payment.tenantId,
-          status: payment.status,
-          mpesaReceiptNumber: payment.mpesaReceiptNumber || "",
-        },
-      });
+    // Notify administrators only when a pending payment changes status.
+    if (previousStatus === "Pending") {
+      try {
+        await Notification.create({
+          recipientRole: "Administrator",
+          recipientId: null,
+          type: "payment_created",
+          title:
+            payment.status === "Paid"
+              ? "M-Pesa Payment Received"
+              : "M-Pesa Payment Failed",
+          message:
+            `M-Pesa payment ${payment.paymentId} for KES ${payment.amount} ` +
+            `is now ${payment.status}.`,
+          data: {
+            paymentId: payment._id,
+            tenantId: payment.tenantId,
+            customerId: payment.customerId,
+            status: payment.status,
+            mpesaReceiptNumber: payment.mpesaReceiptNumber || "",
+          },
+        });
+      } catch (notificationError) {
+        // A notification failure should not undo a confirmed payment.
+        console.error(
+          "[MPESA CALLBACK] Notification failed:",
+          notificationError.message
+        );
+      }
     }
 
     console.log("[MPESA CALLBACK] Payment updated:", {
@@ -319,32 +415,31 @@ const stkCallback = async (req, res) => {
   } catch (error) {
     console.error("[MPESA CALLBACK] Error:", error.message);
 
-    // Acknowledge the callback so Safaricom receives an HTTP response.
-    return res.status(200).json({
-      ResultCode: 0,
-      ResultDesc: "Accepted",
+    // Log the error for investigation. Safaricom callback retries depend
+    // on its own callback policy and configuration.
+    return res.status(500).json({
+      ResultCode: 1,
+      ResultDesc: "Callback processing failed.",
     });
   }
 };
 
-/*
-|--------------------------------------------------------------------------
-| Customer checks payment status
-|--------------------------------------------------------------------------
-*/
-
+/**
+ * Customer checks the status of their own payment.
+ *
+ * GET /api/mpesa/status/:paymentId
+ */
 const checkStatus = async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?._id;
+    const userId = getUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Please log in again.",
+        message: "Your session has expired. Please log in again.",
       });
     }
 
-    // Only allow the customer who initiated this payment to view its status.
     const payment = await Payment.findOne({
       paymentId: req.params.paymentId,
       customerId: userId,
@@ -353,16 +448,18 @@ const checkStatus = async (req, res) => {
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message: "Payment not found for this account.",
+        message: "Payment not found for your account.",
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       data: {
         paymentId: payment.paymentId,
         status: payment.status,
         amount: payment.amount,
+        paymentMethod: payment.paymentMethod,
+        mpesaPhoneNumber: payment.mpesaPhoneNumber || "",
         mpesaReceiptNumber: payment.mpesaReceiptNumber || "",
         resultDesc: payment.mpesaResultDesc || "",
       },

@@ -4,8 +4,8 @@ const paymentSchema = new mongoose.Schema(
   {
     paymentId: {
       type: String,
-      unique: true,
       required: true,
+      unique: true,
       trim: true,
     },
 
@@ -15,7 +15,7 @@ const paymentSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Customer's User._id
+    // The customer's User._id
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -36,12 +36,7 @@ const paymentSchema = new mongoose.Schema(
 
     paymentMethod: {
       type: String,
-      enum: [
-        "M-Pesa",
-        "Bank Transfer",
-        "Cash",
-        "Other",
-      ],
+      enum: ["M-Pesa", "Bank Transfer", "Cash", "Other"],
       required: true,
     },
 
@@ -53,12 +48,7 @@ const paymentSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: [
-        "Pending",
-        "Paid",
-        "Failed",
-        "Cancelled",
-      ],
+      enum: ["Pending", "Paid", "Failed", "Cancelled"],
       default: "Pending",
     },
 
@@ -67,11 +57,50 @@ const paymentSchema = new mongoose.Schema(
       default: Date.now,
     },
 
-    // User._id of the account that submitted/created
-    // the payment.
     submittedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+      default: null,
+    },
+
+    // M-Pesa transaction information
+    mpesaPhoneNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    merchantRequestId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    checkoutRequestId: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    mpesaReceiptNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    mpesaResultCode: {
+      type: Number,
+      default: null,
+    },
+
+    mpesaResultDesc: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    mpesaPaidAmount: {
+      type: Number,
       default: null,
     },
   },
@@ -80,5 +109,16 @@ const paymentSchema = new mongoose.Schema(
   }
 );
 
-module.exports =
-  mongoose.model("Payment", paymentSchema);
+// Prevent two payment records from sharing a non-empty
+// Safaricom checkout request ID.
+paymentSchema.index(
+  { checkoutRequestId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      checkoutRequestId: { $type: "string", $gt: "" },
+    },
+  }
+);
+
+module.exports = mongoose.model("Payment", paymentSchema);

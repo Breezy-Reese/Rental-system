@@ -51,15 +51,72 @@ function customer_payment_date($date): string
     return date("d M Y", $timestamp);
 }
 
+/**
+ * Normalize Kenyan mobile numbers into 254XXXXXXXXX format.
+ *
+ * Accepted examples:
+ * 0712345678
+ * 0112345678
+ * 254712345678
+ * 254112345678
+ * +254712345678
+ * +254 712 345 678
+ */
+function customer_payment_normalize_phone(string $phone): ?string
+{
+    $number = preg_replace('/\D/', '', trim($phone));
+
+    if (!is_string($number) || $number === "") {
+        return null;
+    }
+
+    if (str_starts_with($number, "0")) {
+        $number = "254" . substr($number, 1);
+    } elseif (
+        str_starts_with($number, "7") ||
+        str_starts_with($number, "1")
+    ) {
+        $number = "254" . $number;
+    }
+
+    if (!preg_match('/^254[17]\d{8}$/', $number)) {
+        return null;
+    }
+
+    return $number;
+}
+
+/**
+ * Safely extract an ID from a plain ID or populated object.
+ */
+function customer_payment_extract_id($value): string
+{
+    if (is_array($value)) {
+        return (string)(
+            $value["_id"]
+            ?? $value["id"]
+            ?? $value["leaseId"]
+            ?? ""
+        );
+    }
+
+    if (is_string($value) || is_numeric($value)) {
+        return trim((string)$value);
+    }
+
+    return "";
+}
+
 /*
 |--------------------------------------------------------------------------
-| Customer unit information
+| Customer unit and lease information
 |--------------------------------------------------------------------------
 */
 
 $customerUnitId = "";
 $customerUnitNumber = "";
 $customerPropertyName = "";
+$customerLeaseId = "";
 $customerRent = 0;
 
 /*
@@ -68,21 +125,22 @@ $customerRent = 0;
 |--------------------------------------------------------------------------
 */
 
-if (!empty($customerTenant)) {
+if (!empty($customerTenant) && is_array($customerTenant)) {
 
-    if (
-        isset($customerTenant["unitId"]) &&
-        is_array($customerTenant["unitId"])
-    ) {
+    $tenantUnit = $customerTenant["unitId"] ?? null;
+
+    if (is_array($tenantUnit)) {
+
         $customerUnitId =
-            $customerTenant["unitId"]["_id"]
-            ?? $customerTenant["unitId"]["id"]
+            $tenantUnit["_id"]
+            ?? $tenantUnit["id"]
             ?? "";
 
         $customerUnitNumber =
-            $customerTenant["unitId"]["unitNumber"]
-            ?? $customerTenant["unitId"]["unit"]
+            $tenantUnit["unitNumber"]
+            ?? $tenantUnit["unit"]
             ?? "";
+
     } else {
 
         $customerUnitId =
@@ -96,13 +154,15 @@ if (!empty($customerTenant)) {
             ?? "";
     }
 
-    if (
-        isset($customerTenant["propertyId"]) &&
-        is_array($customerTenant["propertyId"])
-    ) {
+    $tenantProperty = $customerTenant["propertyId"] ?? null;
+
+    if (is_array($tenantProperty)) {
+
         $customerPropertyName =
-            $customerTenant["propertyId"]["name"]
+            $tenantProperty["name"]
+            ?? $tenantProperty["propertyName"]
             ?? "";
+
     } else {
 
         $customerPropertyName =
@@ -118,24 +178,30 @@ if (!empty($customerTenant)) {
 |--------------------------------------------------------------------------
 */
 
-if (!empty($currentLease)) {
+if (!empty($currentLease) && is_array($currentLease)) {
 
-    if (
-        isset($currentLease["unitId"]) &&
-        is_array($currentLease["unitId"])
-    ) {
+    $customerLeaseId = customer_payment_extract_id(
+        $currentLease["_id"]
+        ?? $currentLease["id"]
+        ?? $currentLease["leaseId"]
+        ?? ""
+    );
+
+    $leaseUnit = $currentLease["unitId"] ?? null;
+
+    if (is_array($leaseUnit)) {
 
         if ($customerUnitId === "") {
             $customerUnitId =
-                $currentLease["unitId"]["_id"]
-                ?? $currentLease["unitId"]["id"]
+                $leaseUnit["_id"]
+                ?? $leaseUnit["id"]
                 ?? "";
         }
 
         if ($customerUnitNumber === "") {
             $customerUnitNumber =
-                $currentLease["unitId"]["unitNumber"]
-                ?? $currentLease["unitId"]["unit"]
+                $leaseUnit["unitNumber"]
+                ?? $leaseUnit["unit"]
                 ?? "";
         }
 
@@ -158,14 +224,17 @@ if (!empty($currentLease)) {
 
     if ($customerPropertyName === "") {
 
-        if (
-            isset($currentLease["propertyId"]) &&
-            is_array($currentLease["propertyId"])
-        ) {
+        $leaseProperty = $currentLease["propertyId"] ?? null;
+
+        if (is_array($leaseProperty)) {
+
             $customerPropertyName =
-                $currentLease["propertyId"]["name"]
+                $leaseProperty["name"]
+                ?? $leaseProperty["propertyName"]
                 ?? "";
+
         } else {
+
             $customerPropertyName =
                 $currentLease["property"]
                 ?? $currentLease["propertyName"]
@@ -192,136 +261,214 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if ($action === "submit_payment") {
 
-        $paymentId =
-            "PAY-" .
-            date("YmdHis") .
-            "-" .
-            random_int(100, 999);
-
-        $amount = (float)(
-            $_POST["amount"] ?? 0
+        $amount = filter_var(
+            $_POST["amount"] ?? null,
+            FILTER_VALIDATE_FLOAT
         );
 
-        $paymentMethod =
-            trim($_POST["paymentMethod"] ?? "");
+        $paymentMethod = trim(
+            (string)($_POST["paymentMethod"] ?? "")
+        );
 
-        $paymentDate =
-            trim($_POST["paymentDate"] ?? "");
+        $paymentDate = trim(
+            (string)($_POST["paymentDate"] ?? "")
+        );
 
-        $unitId =
-            trim($_POST["unitId"] ?? "");
+        $unitId = trim(
+            (string)($_POST["unitId"] ?? "")
+        );
 
-        $unitNumber =
-            trim($_POST["unitNumber"] ?? "");
+        $unitNumber = trim(
+            (string)($_POST["unitNumber"] ?? "")
+        );
 
-        $mpesaNumber =
-            trim($_POST["mpesaNumber"] ?? "");
+        $mpesaNumber = trim(
+            (string)($_POST["mpesaNumber"] ?? "")
+        );
 
-        if (
-            $unitId === "" &&
-            $unitNumber === ""
-        ) {
+        $allowedMethods = [
+            "M-Pesa",
+            "Bank Transfer",
+            "Cash",
+            "Other"
+        ];
+
+        /*
+        | Validate the payment details.
+        */
+
+        if ($unitId === "" && $unitNumber === "") {
 
             $errorMessage =
                 "Your assigned unit could not be identified. Please contact the administrator.";
 
-        } elseif ($amount <= 0) {
-
-            $errorMessage =
-                "Payment amount must be greater than zero.";
-
-        } elseif ($paymentMethod === "") {
-
-            $errorMessage =
-                "Please select a payment method.";
-
         } elseif (
-            $paymentMethod === "M-Pesa" &&
-            $mpesaNumber === ""
+            $amount === false ||
+            $amount <= 0 ||
+            !is_finite((float)$amount)
         ) {
 
             $errorMessage =
-                "Please enter your M-Pesa number.";
+                "Enter a valid payment amount greater than zero.";
+
+        } elseif (!in_array($paymentMethod, $allowedMethods, true)) {
+
+            $errorMessage =
+                "Please select a valid payment method.";
 
         } elseif (
-            $paymentMethod === "M-Pesa" &&
-            !preg_match(
-                '/^(?:254|\+254|0)?7\d{8}$/',
-                $mpesaNumber
-            )
+            $paymentDate !== "" &&
+            !preg_match('/^\d{4}-\d{2}-\d{2}$/', $paymentDate)
         ) {
 
             $errorMessage =
-                "Please enter a valid Kenyan M-Pesa number.";
+                "Please select a valid payment date.";
 
         } else {
 
+            /*
+            |----------------------------------------------------------
+            | M-Pesa STK Push
+            |----------------------------------------------------------
+            |
+            | Do not submit an M-Pesa payment to /customer/payments.
+            | That endpoint creates a manual pending payment and would
+            | result in duplicate records if STK Push were also called.
+            */
+
             if ($paymentMethod === "M-Pesa") {
 
-                $mpesaNumber = preg_replace(
-                    '/\s+/',
-                    "",
-                    $mpesaNumber
-                );
+                $normalizedPhone =
+                    customer_payment_normalize_phone($mpesaNumber);
 
-                if (str_starts_with($mpesaNumber, "+254")) {
+                if ($mpesaNumber === "") {
 
-                    $mpesaNumber =
-                        "254" .
-                        substr($mpesaNumber, 4);
+                    $errorMessage =
+                        "Please enter your M-Pesa phone number.";
 
-                } elseif (str_starts_with($mpesaNumber, "07")) {
+                } elseif ($normalizedPhone === null) {
 
-                    $mpesaNumber =
-                        "254" .
-                        substr($mpesaNumber, 1);
+                    $errorMessage =
+                        "Enter a valid Kenyan M-Pesa number, such as 0712345678 or +254712345678.";
+
+                } elseif ($customerLeaseId === "") {
+
+                    $errorMessage =
+                        "Your active lease could not be identified. Please contact the administrator.";
+
+                } else {
+
+                    $stkPayload = [
+                        "phoneNumber" => $normalizedPhone,
+                        "amount" => (int)round((float)$amount),
+                        "leaseId" => $customerLeaseId
+                    ];
+
+                    try {
+
+                        $result = api_post(
+                            "/mpesa/stk-push",
+                            $stkPayload
+                        );
+
+                        if (
+                            is_array($result) &&
+                            !empty($result["success"])
+                        ) {
+
+                            $successMessage =
+                                $result["message"]
+                                ?? "M-Pesa payment request sent. Check your phone and follow the Safaricom prompt.";
+
+                        } else {
+
+                            $errorMessage =
+                                is_array($result)
+                                    ? (
+                                        $result["message"]
+                                        ?? "Unable to initiate M-Pesa payment. Please try again."
+                                    )
+                                    : "Unable to initiate M-Pesa payment. Please try again.";
+                        }
+
+                    } catch (Throwable $exception) {
+
+                        error_log(
+                            "PropertyPro M-Pesa request failed: " .
+                            $exception->getMessage()
+                        );
+
+                        $errorMessage =
+                            "Unable to contact the payment service. Please try again. If the problem continues, contact the administrator.";
+                    }
                 }
-            }
-
-            $payload = [
-
-                "paymentId" =>
-                    $paymentId,
-
-                "amount" =>
-                    $amount,
-
-                "paymentMethod" =>
-                    $paymentMethod,
-
-                "paymentDate" =>
-                    $paymentDate !== ""
-                        ? $paymentDate
-                        : date("Y-m-d"),
-
-                "unitId" =>
-                    $unitId,
-
-                "unitNumber" =>
-                    $unitNumber,
-
-                "mpesaNumber" =>
-                    $paymentMethod === "M-Pesa"
-                        ? $mpesaNumber
-                        : "",
-            ];
-
-            $result = api_post(
-                "/customer/payments",
-                $payload
-            );
-
-            if (!empty($result["success"])) {
-
-                $successMessage =
-                    $result["message"]
-                    ?? "Payment submitted successfully.";
 
             } else {
 
-                $errorMessage =
-                    $result["message"]
-                    ?? "Unable to submit payment.";
+                /*
+                |------------------------------------------------------
+                | Manual payment submission
+                |------------------------------------------------------
+                */
+
+                $paymentId =
+                    "PAY-" .
+                    date("YmdHis") .
+                    "-" .
+                    random_int(100, 999);
+
+                $payload = [
+                    "paymentId" => $paymentId,
+                    "amount" => (float)$amount,
+                    "paymentMethod" => $paymentMethod,
+                    "paymentDate" => $paymentDate !== ""
+                        ? $paymentDate
+                        : date("Y-m-d"),
+                    "unitId" => $unitId,
+                    "unitNumber" => $unitNumber
+                ];
+
+                if ($customerLeaseId !== "") {
+                    $payload["leaseId"] = $customerLeaseId;
+                }
+
+                try {
+
+                    $result = api_post(
+                        "/customer/payments",
+                        $payload
+                    );
+
+                    if (
+                        is_array($result) &&
+                        !empty($result["success"])
+                    ) {
+
+                        $successMessage =
+                            $result["message"]
+                            ?? "Payment submitted successfully.";
+
+                    } else {
+
+                        $errorMessage =
+                            is_array($result)
+                                ? (
+                                    $result["message"]
+                                    ?? "Unable to submit payment."
+                                )
+                                : "Unable to submit payment.";
+                    }
+
+                } catch (Throwable $exception) {
+
+                    error_log(
+                        "PropertyPro manual payment submission failed: " .
+                        $exception->getMessage()
+                    );
+
+                    $errorMessage =
+                        "Unable to submit your payment. Please try again.";
+                }
             }
         }
     }
@@ -329,15 +476,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 /*
 |--------------------------------------------------------------------------
-| Customer payments
+| Customer payment history
 |--------------------------------------------------------------------------
 */
 
-$customerPayments = $payments ?? [];
+$customerPayments = isset($payments) && is_array($payments)
+    ? $payments
+    : [];
 
 /*
 |--------------------------------------------------------------------------
-| Totals
+| Payment totals
 |--------------------------------------------------------------------------
 */
 
@@ -350,10 +499,9 @@ foreach ($customerPayments as $payment) {
         $payment["amount"] ?? 0
     );
 
-    $paymentStatus =
-        strtolower(
-            $payment["status"] ?? ""
-        );
+    $paymentStatus = strtolower(
+        (string)($payment["status"] ?? "")
+    );
 
     if ($paymentStatus === "paid") {
         $totalPaid += $paymentAmount;
@@ -379,7 +527,8 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
     <main class="min-h-screen p-4 sm:p-6 lg:p-8">
 
-        <!-- Header -->
+        <!-- Page header -->
+
         <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
             <div>
@@ -404,7 +553,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         </div>
 
-        <?php if ($successMessage): ?>
+        <!-- Feedback -->
+
+        <?php if ($successMessage !== ""): ?>
 
             <div class="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                 <?= customer_payment_escape($successMessage) ?>
@@ -412,7 +563,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         <?php endif; ?>
 
-        <?php if ($errorMessage): ?>
+        <?php if ($errorMessage !== ""): ?>
 
             <div class="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 <?= customer_payment_escape($errorMessage) ?>
@@ -420,7 +571,8 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         <?php endif; ?>
 
-        <!-- Summary -->
+        <!-- Summary cards -->
+
         <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -461,7 +613,8 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
         </div>
 
-        <!-- Payment History -->
+        <!-- Payment history -->
+
         <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
 
             <div class="border-b border-slate-200 px-6 py-5">
@@ -533,12 +686,11 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                                 <?php
 
-                                $paymentStatus =
-                                    $payment["status"]
-                                    ?? "Pending";
+                                $paymentStatus = $payment["status"] ?? "Pending";
 
-                                $statusLower =
-                                    strtolower($paymentStatus);
+                                $statusLower = strtolower(
+                                    (string)$paymentStatus
+                                );
 
                                 $statusClass = match ($statusLower) {
 
@@ -563,6 +715,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                 ) {
                                     $historyUnit =
                                         $payment["unitId"]["unitNumber"]
+                                        ?? $payment["unitId"]["unit"]
                                         ?? "";
                                 }
 
@@ -573,12 +726,12 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                         ?? "-";
                                 }
 
-                                $paymentId =
+                                $historyPaymentId =
                                     $payment["paymentId"]
                                     ?? $payment["id"]
                                     ?? "-";
 
-                                $paymentMethod =
+                                $historyMethod =
                                     $payment["paymentMethod"]
                                     ?? $payment["method"]
                                     ?? "-";
@@ -588,7 +741,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                 <tr class="hover:bg-slate-50">
 
                                     <td class="whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-900">
-                                        <?= customer_payment_escape($paymentId) ?>
+                                        <?= customer_payment_escape($historyPaymentId) ?>
                                     </td>
 
                                     <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
@@ -596,15 +749,14 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                                     </td>
 
                                     <td class="whitespace-nowrap px-6 py-4 text-sm font-semibold text-slate-700">
-                                        KSh
-                                        <?= number_format(
+                                        KSh <?= number_format(
                                             (float)($payment["amount"] ?? 0),
                                             2
                                         ) ?>
                                     </td>
 
                                     <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
-                                        <?= customer_payment_escape($paymentMethod) ?>
+                                        <?= customer_payment_escape($historyMethod) ?>
                                     </td>
 
                                     <td class="whitespace-nowrap px-6 py-4 text-sm text-slate-700">
@@ -619,9 +771,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                                     <td class="whitespace-nowrap px-6 py-4">
 
-                                        <span
-                                            class="inline-flex rounded-full px-3 py-1 text-xs font-semibold <?= $statusClass ?>"
-                                        >
+                                        <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold <?= $statusClass ?>">
                                             <?= customer_payment_escape($paymentStatus) ?>
                                         </span>
 
@@ -645,7 +795,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
 </div>
 
-<!-- Payment Modal -->
+<!-- Payment modal -->
 
 <div
     id="paymentModal"
@@ -663,7 +813,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 </h2>
 
                 <p class="mt-1 text-sm text-slate-500">
-                    Submit your rent payment for verification.
+                    Submit your rent payment for processing.
                 </p>
 
             </div>
@@ -671,6 +821,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             <button
                 type="button"
                 onclick="document.getElementById('paymentModal').classList.add('hidden')"
+                aria-label="Close payment form"
                 class="text-2xl text-slate-400 hover:text-slate-600"
             >
                 &times;
@@ -679,6 +830,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
         </div>
 
         <form
+            id="paymentForm"
             method="POST"
             action="payments.php"
             class="space-y-5 p-6"
@@ -690,7 +842,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 value="submit_payment"
             >
 
-            <!-- Unit -->
+            <!-- Assigned unit -->
 
             <div>
 
@@ -742,8 +894,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 <?php else: ?>
 
                     <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                        Your assigned unit could not be found.
-                        Please contact the administrator before submitting a payment.
+                        Your assigned unit could not be found. Please contact the administrator.
                     </div>
 
                 <?php endif; ?>
@@ -784,10 +935,10 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                         id="amount"
                         name="amount"
                         min="1"
-                        step="0.01"
+                        step="1"
                         placeholder="25000"
                         value="<?= $customerRent > 0
-                            ? customer_payment_escape($customerRent)
+                            ? customer_payment_escape((int)round($customerRent))
                             : "" ?>"
                         required
                         class="w-full rounded-lg border border-slate-300 py-3 pl-14 pr-4 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
@@ -798,8 +949,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                 <?php if ($customerRent > 0): ?>
 
                     <p class="mt-1 text-xs text-slate-500">
-                        Current monthly rent:
-                        KSh <?= number_format($customerRent, 2) ?>
+                        Current monthly rent: KSh <?= number_format($customerRent, 2) ?>
                     </p>
 
                 <?php endif; ?>
@@ -824,31 +974,21 @@ require_once __DIR__ . "/../../includes/sidebar.php";
                     class="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 >
 
-                    <option value="">
-                        Select method
-                    </option>
+                    <option value="">Select method</option>
 
-                    <option value="M-Pesa">
-                        M-Pesa
-                    </option>
+                    <option value="M-Pesa">M-Pesa</option>
 
-                    <option value="Bank Transfer">
-                        Bank Transfer
-                    </option>
+                    <option value="Bank Transfer">Bank Transfer</option>
 
-                    <option value="Cash">
-                        Cash
-                    </option>
+                    <option value="Cash">Cash</option>
 
-                    <option value="Other">
-                        Other
-                    </option>
+                    <option value="Other">Other</option>
 
                 </select>
 
             </div>
 
-            <!-- M-Pesa -->
+            <!-- M-Pesa fields -->
 
             <div
                 id="mpesaFields"
@@ -856,38 +996,38 @@ require_once __DIR__ . "/../../includes/sidebar.php";
             >
 
                 <p class="text-sm font-semibold text-slate-900">
-                    M-Pesa Details
+                    M-Pesa STK Push
                 </p>
 
-                <p class="mt-1 text-xs text-slate-500">
-                    Enter the phone number used to make the payment.
+                <p class="mt-1 text-xs leading-5 text-slate-600">
+                    Enter your M-Pesa phone number. If the payment service is configured correctly, a payment prompt will be requested on that phone.
                 </p>
 
                 <label
                     for="mpesaNumber"
                     class="mb-2 mt-4 block text-sm font-medium text-slate-700"
                 >
-                    M-Pesa Number
+                    M-Pesa Phone Number
                 </label>
 
                 <input
                     type="tel"
                     id="mpesaNumber"
                     name="mpesaNumber"
-                    inputmode="numeric"
+                    inputmode="tel"
                     autocomplete="tel"
                     placeholder="0712345678"
-                    maxlength="13"
+                    maxlength="20"
                     class="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 >
 
                 <p class="mt-1 text-xs text-slate-500">
-                    Example: 0712345678
+                    Accepted formats: 0712345678 or +254712345678.
                 </p>
 
             </div>
 
-            <!-- Date -->
+            <!-- Payment date -->
 
             <div>
 
@@ -909,7 +1049,7 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
             </div>
 
-            <!-- Buttons -->
+            <!-- Actions -->
 
             <div class="flex justify-end gap-3 border-t pt-5">
 
@@ -923,7 +1063,9 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 
                 <button
                     type="submit"
-                    class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                    id="submitPaymentButton"
+                    <?= ($customerUnitId === "" && $customerUnitNumber === "") ? "disabled" : "" ?>
+                    class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                     Submit Payment
                 </button>
@@ -939,59 +1081,93 @@ require_once __DIR__ . "/../../includes/sidebar.php";
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-    const paymentMethod =
-        document.getElementById("paymentMethod");
-
-    const mpesaFields =
-        document.getElementById("mpesaFields");
-
-    const mpesaNumber =
-        document.getElementById("mpesaNumber");
+    const paymentMethod = document.getElementById("paymentMethod");
+    const mpesaFields = document.getElementById("mpesaFields");
+    const mpesaNumber = document.getElementById("mpesaNumber");
+    const paymentForm = document.getElementById("paymentForm");
+    const submitButton = document.getElementById("submitPaymentButton");
+    const modal = document.getElementById("paymentModal");
 
     function updatePaymentMethod() {
 
-        if (paymentMethod.value === "M-Pesa") {
+        const isMpesa = paymentMethod.value === "M-Pesa";
 
-            mpesaFields.classList.remove("hidden");
-            mpesaNumber.required = true;
+        mpesaFields.classList.toggle("hidden", !isMpesa);
+        mpesaNumber.required = isMpesa;
 
-        } else {
-
-            mpesaFields.classList.add("hidden");
-            mpesaNumber.required = false;
-            mpesaNumber.value = "";
+        if (!isMpesa) {
+            mpesaNumber.setCustomValidity("");
         }
     }
 
-    paymentMethod.addEventListener(
-        "change",
-        updatePaymentMethod
-    );
+    paymentMethod.addEventListener("change", updatePaymentMethod);
 
     updatePaymentMethod();
 
-    mpesaNumber.addEventListener(
-        "input",
-        function () {
-            this.value = this.value.replace(
-                /[^0-9+]/g,
-                ""
-            );
-        }
-    );
+    /*
+     * Accept digits, spaces, hyphens and a leading plus.
+     * Server-side normalization remains authoritative.
+     */
+    mpesaNumber.addEventListener("input", function () {
 
-    const modal =
-        document.getElementById("paymentModal");
+        let value = this.value.replace(/[^\d+\s-]/g, "");
 
-    modal.addEventListener(
-        "click",
-        function (event) {
+        value = value.replace(/(?!^)\+/g, "");
 
-            if (event.target === modal) {
-                modal.classList.add("hidden");
+        this.value = value;
+        this.setCustomValidity("");
+    });
+
+    paymentForm.addEventListener("submit", function (event) {
+
+        if (paymentMethod.value === "M-Pesa") {
+
+            const digits = mpesaNumber.value.replace(/\D/g, "");
+
+            let normalized = digits;
+
+            if (normalized.startsWith("0")) {
+                normalized = "254" + normalized.substring(1);
+            } else if (
+                normalized.startsWith("7") ||
+                normalized.startsWith("1")
+            ) {
+                normalized = "254" + normalized;
+            }
+
+            if (!/^254[17]\d{8}$/.test(normalized)) {
+
+                event.preventDefault();
+
+                mpesaNumber.setCustomValidity(
+                    "Enter a valid Kenyan number, such as 0712345678 or +254712345678."
+                );
+
+                mpesaNumber.reportValidity();
+
+                return;
             }
         }
-    );
+
+        /*
+         * Prevent accidental double submissions.
+         * Re-enable the button when the browser returns to this page.
+         */
+        submitButton.disabled = true;
+        submitButton.textContent = "Submitting...";
+    });
+
+    window.addEventListener("pageshow", function () {
+        submitButton.disabled = false;
+        submitButton.textContent = "Submit Payment";
+    });
+
+    modal.addEventListener("click", function (event) {
+
+        if (event.target === modal) {
+            modal.classList.add("hidden");
+        }
+    });
 
 });
 </script>
