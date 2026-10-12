@@ -65,20 +65,24 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
         content="PropertyPro"
     >
 
+    <!-- PWA Manifest -->
+
     <link
         rel="manifest"
         href="/manifest.json"
     >
 
+    <!-- PropertyPro App Icon -->
+
     <link
         rel="icon"
-        href="/assets/images/propertypro-icon.svg"
-        type="image/svg+xml"
+        href="/assets/images/propertypro-icon.jpg"
+        type="image/jpeg"
     >
 
     <link
         rel="apple-touch-icon"
-        href="/assets/images/propertypro-icon.svg"
+        href="/assets/images/propertypro-icon.jpg"
     >
 
     <title>
