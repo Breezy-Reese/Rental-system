@@ -7,14 +7,14 @@
  */
 
 $pageTitle = $pageTitle ?? 'PropertyPro';
-$currentPage = basename($_SERVER['PHP_SELF']);
+$currentPage = basename($_SERVER['PHP_SELF'] ?? '');
 
 /*
 |--------------------------------------------------------------------------
 | Pages that do NOT use the sidebar
 |--------------------------------------------------------------------------
-| These pages should not display the mobile hamburger button.
 */
+
 $publicPages = [
     'login.php',
     'register.php',
@@ -25,6 +25,7 @@ $publicPages = [
 | Determine whether the mobile menu should be displayed
 |--------------------------------------------------------------------------
 */
+
 $showMobileMenu = !in_array($currentPage, $publicPages, true);
 
 ?>
@@ -39,6 +40,47 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
         content="width=device-width, initial-scale=1.0"
     >
 
+    <!-- ========================================================
+         PropertyPro PWA Configuration
+    ========================================================= -->
+
+    <meta name="theme-color" content="#4f46e5">
+
+    <meta
+        name="description"
+        content="PropertyPro - Manage rental properties, tenants, leases and payments."
+    >
+
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta
+        name="apple-mobile-web-app-status-bar-style"
+        content="default"
+    >
+
+    <meta
+        name="apple-mobile-web-app-title"
+        content="PropertyPro"
+    >
+
+    <link
+        rel="manifest"
+        href="/manifest.json"
+    >
+
+    <link
+        rel="icon"
+        href="/assets/images/propertypro-icon.svg"
+        type="image/svg+xml"
+    >
+
+    <link
+        rel="apple-touch-icon"
+        href="/assets/images/propertypro-icon.svg"
+    >
+
     <title>
         <?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>
         | PropertyPro
@@ -47,11 +89,13 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
     <!-- ========================================================
          Tailwind CSS
     ========================================================= -->
+
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- ========================================================
          Tailwind Configuration
     ========================================================= -->
+
     <script>
         tailwind.config = {
             theme: {
@@ -72,6 +116,25 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
         };
     </script>
 
+    <!-- ========================================================
+         PropertyPro Service Worker
+    ========================================================= -->
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker
+                    .register('/service-worker.js')
+                    .catch(function (error) {
+                        console.error(
+                            'PropertyPro service worker registration failed:',
+                            error
+                        );
+                    });
+            });
+        }
+    </script>
+
 </head>
 
 <body class="bg-slate-50 text-slate-800">
@@ -88,9 +151,7 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
            shadow-sm lg:hidden"
 >
 
-    <!-- ========================================================
-         Mobile Menu Button
-    ========================================================= -->
+    <!-- Mobile Menu Button -->
 
     <button
         id="mobileMenuButton"
@@ -105,7 +166,6 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
                focus:ring-indigo-500"
     >
 
-        <!-- Hamburger Icon -->
         <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-6 w-6"
@@ -113,6 +173,7 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
             viewBox="0 0 24 24"
             stroke="currentColor"
             stroke-width="2"
+            aria-hidden="true"
         >
             <path
                 stroke-linecap="round"
@@ -123,10 +184,7 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
 
     </button>
 
-
-    <!-- ========================================================
-         Page Title
-    ========================================================= -->
+    <!-- Page Title -->
 
     <div class="ml-3 min-w-0">
 
@@ -139,7 +197,6 @@ $showMobileMenu = !in_array($currentPage, $publicPages, true);
 </div>
 
 <?php endif; ?>
-
 
 <!-- ============================================================
      MAIN PAGE WRAPPER

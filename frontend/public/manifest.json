@@ -1,0 +1,21 @@
+
+{
+  "id": "/",
+  "name": "PropertyPro - Property & Rental Management",
+  "short_name": "PropertyPro",
+  "description": "Manage rental properties, tenants, leases and payments.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/assets/images/propertypro-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
