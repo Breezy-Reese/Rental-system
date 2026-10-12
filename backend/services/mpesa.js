@@ -1,9 +1,70 @@
+
 const axios = require("axios");
 
 const BASE_URL =
-  process.env.MPESA_ENV === "production"
+  String(process.env.MPESA_ENV || "sandbox").toLowerCase() === "production"
     ? "https://api.safaricom.co.ke"
     : "https://sandbox.safaricom.co.ke";
+
+/*
+|--------------------------------------------------------------------------
+| Validate required M-Pesa configuration
+|--------------------------------------------------------------------------
+*/
+
+const requireMpesaConfig = () => {
+  const required = [
+    "MPESA_CONSUMER_KEY",
+    "MPESA_CONSUMER_SECRET",
+    "MPESA_SHORT_CODE",
+    "MPESA_PASSKEY",
+    "MPESA_CALLBACK_URL",
+  ];
+
+  const missing = required.filter(
+    (key) => !String(process.env[key] || "").trim()
+  );
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing M-Pesa environment variables: ${missing.join(", ")}`
+    );
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| Normalize and validate Kenyan mobile numbers
+|--------------------------------------------------------------------------
+| Accepted:
+| 0712345678
+| 0112345678
+| 254712345678
+| 254112345678
+| +254712345678
+| +254 112 345 678
+|
+| Output: 254XXXXXXXXX
+|--------------------------------------------------------------------------
+*/
+
+const normalizePhone = (phone) => {
+  let number = String(phone || "").replace(/\D/g, "");
+
+  if (number.startsWith("0")) {
+    number = "254" + number.slice(1);
+  } else if (number.startsWith("7") || number.startsWith("1")) {
+    number = "254" + number;
+  }
+
+  if (!/^254[17]\d{8}$/.test(number)) {
+    throw new Error(
+      "Invalid Kenyan phone number. Enter 0712345678, 0112345678, or a number beginning with +254."
+    );
+  }
+
+  return number;
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -12,75 +73,91 @@ const BASE_URL =
 */
 
 const getAccessToken = async () => {
+  requireMpesaConfig();
+
   const auth = Buffer.from(
     `${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`
   ).toString("base64");
 
-  const response = await axios.get(
-    `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
-    {
-      headers: {
-        Authorization: `Basic ${auth}`,
-      },
-    }
-  );
+  try {
+    const response = await axios.get(
+      `${BASE_URL}/oauth/v1/generate?grant_type=client_credentials`,
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+        },
+        timeout: 20000,
+      }
+    );
 
-  return response.data.access_token;
+    if (!response.data?.access_token) {
+      throw new Error("Safaricom did not return an access token.");
+    }
+
+    return response.data.access_token;
+  } catch (error) {
+    console.error(
+      "[MPESA AUTH] Failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error("Could not authenticate with Safaricom M-Pesa.");
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| Generate timestamp in Kenya time (EAT)
+|--------------------------------------------------------------------------
+*/
+
+const getTimestamp = () => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+
+  const values = {};
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
+  }
+
+  return (
+    values.year +
+    values.month +
+    values.day +
+    values.hour +
+    values.minute +
+    values.second
+  );
 };
 
 /*
 |--------------------------------------------------------------------------
 | Build the STK Push password
 |--------------------------------------------------------------------------
-| Safaricom requires: base64(ShortCode + Passkey + Timestamp)
+| Base64(ShortCode + Passkey + Timestamp)
+|--------------------------------------------------------------------------
 */
-
-const getTimestamp = () => {
-  const date = new Date();
-
-  const pad = (n) => String(n).padStart(2, "0");
-
-  return (
-    date.getFullYear().toString() +
-    pad(date.getMonth() + 1) +
-    pad(date.getDate()) +
-    pad(date.getHours()) +
-    pad(date.getMinutes()) +
-    pad(date.getSeconds())
-  );
-};
 
 const getPassword = (timestamp) => {
-  const raw =
-    process.env.MPESA_SHORT_CODE +
-    process.env.MPESA_PASSKEY +
-    timestamp;
+  const shortcode = String(process.env.MPESA_SHORT_CODE || "").trim();
+  const passkey = String(process.env.MPESA_PASSKEY || "").trim();
 
-  return Buffer.from(raw).toString("base64");
-};
-
-/*
-|--------------------------------------------------------------------------
-| Normalize phone number to 2547XXXXXXXX format
-|--------------------------------------------------------------------------
-*/
-
-const normalizePhone = (phone) => {
-  let cleaned = String(phone).trim().replace(/\s+/g, "");
-
-  if (cleaned.startsWith("+")) {
-    cleaned = cleaned.slice(1);
+  if (!shortcode || !passkey || !timestamp) {
+    throw new Error("Cannot generate the M-Pesa password. Check configuration.");
   }
 
-  if (cleaned.startsWith("0")) {
-    cleaned = "254" + cleaned.slice(1);
-  }
-
-  if (cleaned.startsWith("7") || cleaned.startsWith("1")) {
-    cleaned = "254" + cleaned;
-  }
-
-  return cleaned;
+  return Buffer.from(shortcode + passkey + timestamp).toString("base64");
 };
 
 /*
@@ -95,67 +172,124 @@ const initiateStkPush = async ({
   accountReference,
   transactionDesc,
 }) => {
-  const accessToken = await getAccessToken();
+  requireMpesaConfig();
 
+  const normalizedPhone = normalizePhone(phoneNumber);
+  const numericAmount = Number(amount);
+
+  if (!Number.isFinite(numericAmount) || numericAmount < 1) {
+    throw new Error("M-Pesa payment amount must be at least KES 1.");
+  }
+
+  const roundedAmount = Math.round(numericAmount);
+  const accessToken = await getAccessToken();
   const timestamp = getTimestamp();
   const password = getPassword(timestamp);
-  const normalizedPhone = normalizePhone(phoneNumber);
 
-  const response = await axios.post(
-    `${BASE_URL}/mpesa/stkpush/v1/processrequest`,
-    {
-      BusinessShortCode: process.env.MPESA_SHORT_CODE,
-      Password: password,
-      Timestamp: timestamp,
-      TransactionType: "CustomerPayBillOnline",
-      Amount: Math.round(Number(amount)),
-      PartyA: normalizedPhone,
-      PartyB: process.env.MPESA_SHORT_CODE,
-      PhoneNumber: normalizedPhone,
-      CallBackURL: process.env.MPESA_CALLBACK_URL,
-      AccountReference: accountReference || "PropertyPro",
-      TransactionDesc: transactionDesc || "Rent payment",
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  const payload = {
+    BusinessShortCode: String(process.env.MPESA_SHORT_CODE).trim(),
+    Password: password,
+    Timestamp: timestamp,
 
-  return response.data;
+    // This transaction type is for PayBill-based STK Push.
+    TransactionType: "CustomerPayBillOnline",
+
+    Amount: roundedAmount,
+    PartyA: normalizedPhone,
+    PartyB: String(process.env.MPESA_SHORT_CODE).trim(),
+    PhoneNumber: normalizedPhone,
+    CallBackURL: String(process.env.MPESA_CALLBACK_URL).trim(),
+    AccountReference: String(accountReference || "PropertyPro").slice(0, 12),
+    TransactionDesc: String(transactionDesc || "Rent payment").slice(0, 13),
+  };
+
+  console.log("[MPESA STK] Sending request:", {
+    environment:
+      String(process.env.MPESA_ENV || "sandbox").toLowerCase(),
+    phoneNumber: `${normalizedPhone.slice(0, 5)}****${normalizedPhone.slice(-3)}`,
+    amount: roundedAmount,
+    callbackConfigured: Boolean(payload.CallBackURL),
+  });
+
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/mpesa/stkpush/v1/processrequest`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 30000,
+      }
+    );
+
+    console.log("[MPESA STK] Safaricom response:", {
+      responseCode: response.data?.ResponseCode,
+      responseDescription: response.data?.ResponseDescription,
+      customerMessage: response.data?.CustomerMessage,
+      checkoutRequestId: response.data?.CheckoutRequestID,
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "[MPESA STK] Request failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error(
+      error.response?.data?.errorMessage ||
+        error.response?.data?.ResponseDescription ||
+        "Safaricom could not initiate the STK Push."
+    );
+  }
 };
 
 /*
 |--------------------------------------------------------------------------
-| Query STK Push status (optional polling)
+| Query STK Push status
 |--------------------------------------------------------------------------
 */
 
 const queryStkStatus = async (checkoutRequestId) => {
-  const accessToken = await getAccessToken();
+  requireMpesaConfig();
 
+  if (!checkoutRequestId) {
+    throw new Error("CheckoutRequestID is required.");
+  }
+
+  const accessToken = await getAccessToken();
   const timestamp = getTimestamp();
   const password = getPassword(timestamp);
 
-  const response = await axios.post(
-    `${BASE_URL}/mpesa/stkpushquery/v1/query`,
-    {
-      BusinessShortCode: process.env.MPESA_SHORT_CODE,
-      Password: password,
-      Timestamp: timestamp,
-      CheckoutRequestID: checkoutRequestId,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+  try {
+    const response = await axios.post(
+      `${BASE_URL}/mpesa/stkpushquery/v1/query`,
+      {
+        BusinessShortCode: String(process.env.MPESA_SHORT_CODE).trim(),
+        Password: password,
+        Timestamp: timestamp,
+        CheckoutRequestID: checkoutRequestId,
       },
-    }
-  );
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 20000,
+      }
+    );
 
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error(
+      "[MPESA QUERY] Failed:",
+      error.response?.data || error.message
+    );
+
+    throw new Error("Could not check the M-Pesa transaction status.");
+  }
 };
 
 module.exports = {
@@ -163,4 +297,5 @@ module.exports = {
   initiateStkPush,
   queryStkStatus,
   normalizePhone,
+  getTimestamp,
 };
